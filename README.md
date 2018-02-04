@@ -15,6 +15,11 @@ image 'Greetings' 'http://hellothere'
 - neutral characters (, =)
 - everything is a function
 - (multi)string delimiters ''
+- \ continuation character
+- python like white space sensitive
+- by default every statement is list
+-- starts with whitespace
+-- ends at new line
 
 - SUPPORT XML-LITE AS FIRST CLASS DATA STRUCTURE
 {
