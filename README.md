@@ -9,7 +9,7 @@ table [strip = true]
     2, elina, emadol
   '
 
-image 'Greetings' 'http://hellothere'
+link label: 'Greetings' to: 'http://hellothere'
 
 - its lisp
 - neutral characters (, =)
@@ -32,3 +32,13 @@ image 'Greetings' 'http://hellothere'
     }
   }
 }
+
+lisp + smalltalk
+
+function is an object too.
+
+A calls B, B class C, c class D -- D knows C called it, C knows B called it, B knows A called it.
+
+Concept of owner. An object obeys its owner.
+
+inline comment : or ` or , or .
