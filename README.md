@@ -32,19 +32,3 @@ image 'Greetings' 'http://hellothere'
     }
   }
 }
-
-? aquintine on block concept
-
-
-[
-  :user [:id > 3] [
-    :id
-    :name
-    :location [:id = 1] [
-      :id
-      :name
-    ]
-  ]
-]
-
-
