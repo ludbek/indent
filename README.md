@@ -5,7 +5,7 @@
     },
     body {
       img (url: https://blah),
-      ul (color = 'green) {
+      ul (color: 'green') {
         li { 'apple' },
         li { 'mango' }
       }
