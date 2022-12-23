@@ -26,7 +26,7 @@ resources {
   }
 }
 
-create [type = action] {
+create type = action] {
   arg {
     name string
     email string
@@ -58,20 +58,20 @@ actions:
       location [default ktm]: string
       
 // put these in prelude of a parser
-int "string"
-string "string"
+(int "string") ; () is a list
+string "string" ; string is a symbol
 
-user [type "resource"]
+user (type "resource")
   id int
   name string
   location [default "ktm", optional true] string
 
-create [type "action"]
+create {type "action"} ; {} is a map
   arg
     name string
     email string
     location [default "ktm"] string
-  res user
+  res [user] ; [] is an array, vector
       
 actions
   create
