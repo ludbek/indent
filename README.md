@@ -56,4 +56,12 @@ actions:
       name: string
       email: string
       location [default ktm]: string
+      
+      
+actions
+  create
+    arg [type resource]
+      name string
+      email string
+      location [default ktm] string
 ```
