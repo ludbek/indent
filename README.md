@@ -57,23 +57,33 @@ actions:
       email: string
       location [default ktm]: string
       
-create [type action]
+// put these in prelude of a parser
+int "string"
+string "string"
+
+user [type "resource"]
+  id int
+  name string
+  location [default "ktm", optional true] string
+
+create [type "action"]
   arg
     name string
     email string
-    location [default ktm] string
-  res
-    id int
-    name string
-    email string
-    location string
+    location [default "ktm"] string
+  res user
       
 actions
   create
-    arg [type resource]
+    arg
       name string
       email string
       location [default ktm] string
 ```
 - how to support array?
 - - if children of an element if of same type, they are converted to array? e.g. shows {movie {}, movie{}}
+
+
+- aim
+- - lml to json or xml
+- - lml is a sub set of lisp
