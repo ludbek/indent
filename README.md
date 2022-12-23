@@ -57,6 +57,16 @@ actions:
       email: string
       location [default ktm]: string
       
+create [type action]
+  arg
+    name string
+    email string
+    location [default ktm] string
+  res
+    id int
+    name string
+    email string
+    location string
       
 actions
   create
