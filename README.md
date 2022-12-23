@@ -1,3 +1,4 @@
+```
 - implicit types, strings by default, unless number or boolean
 - to represent a number or boolean as string wrap it with ""
 
@@ -42,3 +43,4 @@ actions {
     }
   }
 }
+```
