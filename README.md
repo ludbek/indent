@@ -75,3 +75,5 @@ actions
       email string
       location [default ktm] string
 ```
+- how to support array?
+- - if children of an element if of same type, they are converted to array? e.g. shows {movie {}, movie{}}
