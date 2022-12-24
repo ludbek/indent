@@ -1,19 +1,40 @@
 ```
-- implicit types, strings by default, unless number or boolean
-- to represent a number or boolean as string wrap it with ""
+- implicit types, values are either integer, boolean or else string
+- support for importing another file
+- use cases for this doc
+  - schema definition
+  - config definition
+  - can be used to communicate between devices
+- supports module system, a file name is a module name
+  - refer to a module nodes by `./module/path.node-name.sub-node-name
+- refer to nodes in current doc, node-name
+- 'is a multiple string'
+- this doc to xml or json
 
-user [type = resource] {
-  id int
-  name string
-  email string (validation: email)
-  password string
+- todo
+-- support array
+-- how would one support enums?
+-- support import? we might, imagine splitting files and connecting them all in top level doc
+
+user (type resource) {
+  id 'int'
+  name 'string'
+  email (validation email) 'string'
+  password 'string'
 }
 
-create-arg [type = resource] {
-  name string
-  email string
-  location [optional = true, default = ktm] string
+admin-user (type = resource, extends = user) {
+  previliges []
 }
+
+create-arg (type = 'resource') {
+  name 'string'
+  email 'string'
+  location (optional true, default 'ktm') 'string'
+}
+
+int 'int'
+string 'string'
 
 resources {
   user {
@@ -26,64 +47,16 @@ resources {
   }
 }
 
-create type = action] {
+create (type = "action") {
   arg {
-    name string
-    email string
-    location [default = ktm] string
-  }
+    name string,
+    email string,
+    location (default = "ktm") string,
+  },
+  res [user] // array of users
 }
 
 actions {
-  creae {
-    arg [type = resource ] {
-      name string
-      email string
-      location [default = ktm] string
-    }
-  }
+  create-user (
 }
-
-create [type action]:
-  arg:
-    name: string
-    email: string
-    location [default ktm]: string
-
-actions:
-  create:
-    arg [type resource]:
-      name: string
-      email: string
-      location [default ktm]: string
-      
-// put these in prelude of a parser
-(int "string") ; () is a list
-string "string" ; string is a symbol
-
-user (type "resource")
-  id int
-  name string
-  location [default "ktm", optional true] string
-
-create {type "action"} ; {} is a map
-  arg
-    name string
-    email string
-    location [default "ktm"] string
-  res [user] ; [] is an array, vector
-      
-actions
-  create
-    arg
-      name string
-      email string
-      location [default ktm] string
 ```
-- how to support array?
-- - if children of an element if of same type, they are converted to array? e.g. shows {movie {}, movie{}}
-
-
-- aim
-- - lml to json or xml
-- - lml is a sub set of lisp
