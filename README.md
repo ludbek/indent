@@ -16,6 +16,24 @@
 -- how would one support enums?
 -- support import? we might, imagine splitting files and connecting them all in top level doc
 
+Aim
+- markdown alternative for docs
+- data serialization and eserialization just like xml
+
+Mardown alternative
+h1: Welcome to the green land
+ol {
+  li: apple
+  li: banana
+  li: pineapple
+}
+p {
+  'hello there' // text node literal
+  strong: 'suri meow' // inline text node literal
+  'How are you?'
+}
+
+Serialization
 user (type resource) {
   id 'int'
   name 'string'
@@ -28,9 +46,9 @@ admin-user (type = resource, extends = user) {
 }
 
 create-arg (type = 'resource') {
-  name 'string'
-  email 'string'
-  location (optional true, default 'ktm') 'string'
+  name: string
+  email: string
+  location (optional true, default 'ktm'): string
 }
 
 int 'int'
@@ -60,3 +78,11 @@ actions {
   create-user (
 }
 ```
+
+Finalized
+'is a text literal' // can be used to chain multiple nodes
+node: single text literal
+{} is wraps child nodes
+first word is a node
+() is map
+
