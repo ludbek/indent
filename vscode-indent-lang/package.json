@@ -68,7 +68,7 @@
     }
   },
   "dependencies": {
-    "indent-language-server": "file:../indent-language-server",
+    "indent-language-server": "*",
     "vscode-languageclient": "^9.0.1"
   },
   "devDependencies": {

@@ -1,0 +1,21 @@
+{
+  "name": "indent-monorepo",
+  "private": true,
+  "workspaces": [
+    "indent-parser",
+    "indent-xpath",
+    "treesitter-indent",
+    "indent-language-server",
+    "vscode-indent-lang"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present"
+  },
+  "devDependencies": {
+    "@types/node": "^26.4.0",
+    "tsup": "^8.0.0",
+    "typescript": "^5.4.0",
+    "vitest": "^1.6.0"
+  }
+}
