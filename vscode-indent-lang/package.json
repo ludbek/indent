@@ -76,6 +76,6 @@
     "vscode-textmate": "^9.2.0"
   },
   "scripts": {
-    "test": "node test/continuation-indent.test.js && node test/insert-node-ref-contributions.test.js && node test/tmgrammar.test.js && node test/smoke-test.js && node test/smoke-test-file.js ../diagram-app/src/data/sample.inml"
+    "test": "node test/continuation-indent.test.js && node test/insert-node-ref-contributions.test.js && node test/tmgrammar.test.js && node test/smoke-test.js && node test/smoke-test-file.js ../indent-parser/test/fixtures/sample.inml"
   }
 }
