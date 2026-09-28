@@ -1,0 +1,2 @@
+service name="user-service"
+    !include "../team.inml"

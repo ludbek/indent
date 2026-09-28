@@ -1,0 +1,2 @@
+org name="A"
+    !include "./cycle-b.inml"

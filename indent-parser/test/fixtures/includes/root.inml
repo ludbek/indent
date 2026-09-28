@@ -1,0 +1,5 @@
+org name="Acme" color="green"
+    !include "./team.inml"
+    service name="user-service"
+        API name="rollover"
+            -> entity="Globex/super/rollover"
