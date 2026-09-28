@@ -1,0 +1,81 @@
+{
+  "name": "vscode-indent-lang",
+  "displayName": "Indent",
+  "description": "Syntax highlighting for Indent Markup Language (.inml) used by diagram-app.",
+  "version": "0.0.2",
+  "publisher": "diagram-app",
+  "private": true,
+  "engines": {
+    "vscode": "^1.75.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "activationEvents": [
+    "onLanguage:indent",
+    "onCommand:indent.insertNodeRef"
+  ],
+  "main": "./extension.js",
+  "contributes": {
+    "languages": [
+      {
+        "id": "indent",
+        "aliases": [
+          "Indent Markup Language",
+          "indent"
+        ],
+        "extensions": [
+          ".inml"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "indent",
+        "scopeName": "source.indent",
+        "path": "./syntaxes/indent.tmLanguage.json"
+      }
+    ],
+    "configurationDefaults": {
+      "[indent]": {
+        "editor.formatOnType": true
+      }
+    },
+    "commands": [
+      {
+        "command": "indent.insertNodeRef",
+        "title": "Indent: Insert Node Reference",
+        "category": "Indent"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "indent.insertNodeRef",
+        "key": "ctrl+shift+r",
+        "mac": "cmd+shift+r",
+        "when": "editorLangId == indent"
+      }
+    ],
+    "menus": {
+      "editor/context": [
+        {
+          "command": "indent.insertNodeRef",
+          "when": "editorLangId == indent",
+          "group": "9_cutcopypaste"
+        }
+      ]
+    }
+  },
+  "dependencies": {
+    "indent-language-server": "*",
+    "vscode-languageclient": "^9.0.1"
+  },
+  "devDependencies": {
+    "vscode-oniguruma": "^2.0.1",
+    "vscode-textmate": "^9.2.0"
+  },
+  "scripts": {
+    "test": "node test/continuation-indent.test.js && node test/insert-node-ref-contributions.test.js && node test/tmgrammar.test.js && node test/smoke-test.js && node test/smoke-test-file.js ../diagram-app/src/data/sample.inml"
+  }
+}

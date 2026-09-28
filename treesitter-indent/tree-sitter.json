@@ -1,0 +1,38 @@
+{
+  "$schema": "https://tree-sitter.github.io/tree-sitter/assets/schemas/config.schema.json",
+  "grammars": [
+    {
+      "name": "indent",
+      "camelcase": "Indent",
+      "title": "Indent",
+      "scope": "source.indent",
+      "file-types": [
+        "inml"
+      ],
+      "injection-regex": "^indent$",
+      "class-name": "TreeSitterIndent"
+    }
+  ],
+  "metadata": {
+    "version": "0.1.0",
+    "license": "MIT",
+    "description": "Tree-sitter grammar for Indent Markup Language (.inml) used by diagram-app",
+    "authors": [
+      {
+        "name": "Suren"
+      }
+    ],
+    "links": {
+      "repository": "https://github.com/tree-sitter/treesitter-indent"
+    }
+  },
+  "bindings": {
+    "c": true,
+    "go": true,
+    "node": true,
+    "python": true,
+    "rust": true,
+    "swift": true,
+    "zig": false
+  }
+}

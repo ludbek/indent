@@ -1,0 +1,493 @@
+==================
+Single statement, no attributes
+==================
+
+org
+
+---
+
+(document
+  (statement
+    type: (type)))
+
+==================
+Single statement, quoted string attributes
+==================
+
+org name="Acme" color="green"
+
+---
+
+(document
+  (statement
+    type: (type)
+    attribute: (attribute
+      name: (attribute_name)
+      value: (value (string)))
+    attribute: (attribute
+      name: (attribute_name)
+      value: (value (string)))))
+
+==================
+Unquoted boolean and number attribute values
+==================
+
+service pk=true count=42 ratio=-3.5
+
+---
+
+(document
+  (statement
+    type: (type)
+    attribute: (attribute
+      name: (attribute_name)
+      value: (value (boolean)))
+    attribute: (attribute
+      name: (attribute_name)
+      value: (value (number)))
+    attribute: (attribute
+      name: (attribute_name)
+      value: (value (number)))))
+
+==================
+Nested children (single level)
+==================
+
+org name="Acme"
+    team name="Phoenix"
+
+---
+
+(document
+  (statement
+    type: (type)
+    attribute: (attribute
+      name: (attribute_name)
+      value: (value (string)))
+    (block
+      (statement
+        type: (type)
+        attribute: (attribute
+          name: (attribute_name)
+          value: (value (string)))))))
+
+==================
+Multi-level nesting and dedent back to a shallower depth
+==================
+
+org name="Acme"
+    team name="Phoenix"
+    service name="user-service"
+        API name="rollover"
+org name="Globex"
+
+---
+
+(document
+  (statement
+    type: (type)
+    attribute: (attribute
+      name: (attribute_name)
+      value: (value (string)))
+    (block
+      (statement
+        type: (type)
+        attribute: (attribute
+          name: (attribute_name)
+          value: (value (string))))
+      (statement
+        type: (type)
+        attribute: (attribute
+          name: (attribute_name)
+          value: (value (string)))
+        (block
+          (statement
+            type: (type)
+            attribute: (attribute
+              name: (attribute_name)
+              value: (value (string))))))))
+  (statement
+    type: (type)
+    attribute: (attribute
+      name: (attribute_name)
+      value: (value (string)))))
+
+==================
+Full-line comments and blank lines are skipped
+==================
+
+org name="Acme"
+    ; a comment
+    team name="Phoenix"
+
+    service name="user-service"
+
+---
+
+(document
+  (statement
+    type: (type)
+    attribute: (attribute
+      name: (attribute_name)
+      value: (value (string)))
+    (block
+      (statement
+        type: (type)
+        attribute: (attribute
+          name: (attribute_name)
+          value: (value (string))))
+      (statement
+        type: (type)
+        attribute: (attribute
+          name: (attribute_name)
+          value: (value (string)))))))
+
+==================
+Backslash line-continuation joins attributes across physical lines
+==================
+
+org name="Acme" \
+    color="green"
+    team name="Phoenix"
+
+---
+
+(document
+  (statement
+    type: (type)
+    attribute: (attribute
+      name: (attribute_name)
+      value: (value (string)))
+    attribute: (attribute
+      name: (attribute_name)
+      value: (value (string)))
+    (block
+      (statement
+        type: (type)
+        attribute: (attribute
+          name: (attribute_name)
+          value: (value (string)))))))
+
+==================
+Bareword kind, e.g. "->" used purely as an ordinary type keyword
+==================
+
+API name="rollover"
+    -> entity="Globex/super/rollover"
+
+---
+
+(document
+  (statement
+    type: (type)
+    attribute: (attribute
+      name: (attribute_name)
+      value: (value (string)))
+    (block
+      (statement
+        type: (type)
+        attribute: (attribute
+          name: (attribute_name)
+          value: (value (string)))))))
+
+==================
+No trailing newline at EOF still closes nested blocks
+==================
+
+org name="Acme"
+    team name="Phoenix"
+
+---
+
+(document
+  (statement
+    type: (type)
+    attribute: (attribute
+      name: (attribute_name)
+      value: (value (string)))
+    (block
+      (statement
+        type: (type)
+        attribute: (attribute
+          name: (attribute_name)
+          value: (value (string)))))))
+
+==================
+Positional string value followed by attributes
+==================
+
+service "Auth Service" owner="ateam"
+
+---
+
+(document
+  (statement
+    type: (type)
+    value: (positional_value (string))
+    attribute: (attribute
+      name: (attribute_name)
+      value: (value (string)))))
+
+==================
+Positional number and boolean values
+==================
+
+database 123 is_active=true
+flag false
+
+---
+
+(document
+  (statement
+    type: (type)
+    value: (positional_value (number))
+    attribute: (attribute
+      name: (attribute_name)
+      value: (value (boolean))))
+  (statement
+    type: (type)
+    value: (positional_value (boolean))))
+
+==================
+Positional value with nested blocks
+==================
+
+org "Org"
+    service "user-service" owner="ateam"
+        -> "/UpstreamOrg/Member"
+
+---
+
+(document
+  (statement
+    type: (type)
+    value: (positional_value (string))
+    (block
+      (statement
+        type: (type)
+        value: (positional_value (string))
+        attribute: (attribute
+          name: (attribute_name)
+          value: (value (string)))
+        (block
+          (statement
+            type: (type)
+            value: (positional_value (string))))))))
+
+==================
+Line continuation with positional value
+==================
+
+service "Auth Service" \
+    owner="ateam" \
+    pk=true
+
+---
+
+(document
+  (statement
+    type: (type)
+    value: (positional_value (string))
+    attribute: (attribute
+      name: (attribute_name)
+      value: (value (string)))
+    attribute: (attribute
+      name: (attribute_name)
+      value: (value (boolean)))))
+
+==================
+Unquoted ref attribute values (absolute, descendant, predicates)
+==================
+
+API name="rollover"
+    -> entity=/org/service/database
+    -> entity=//database
+    -> entity=/org//database
+    -> entity=/org/service[owner]
+    -> entity=/org/service[owner="ateam"]
+    -> entity=/org/service[owner="ateam",port=8080]
+    -> entity=/org/service[.="Auth Service"]
+
+---
+
+(document
+  (statement
+    type: (type)
+    attribute: (attribute
+      name: (attribute_name)
+      value: (value (string)))
+    (block
+      (statement
+        type: (type)
+        attribute: (attribute
+          name: (attribute_name)
+          value: (value (xpath))))
+      (statement
+        type: (type)
+        attribute: (attribute
+          name: (attribute_name)
+          value: (value (xpath))))
+      (statement
+        type: (type)
+        attribute: (attribute
+          name: (attribute_name)
+          value: (value (xpath))))
+      (statement
+        type: (type)
+        attribute: (attribute
+          name: (attribute_name)
+          value: (value (xpath))))
+      (statement
+        type: (type)
+        attribute: (attribute
+          name: (attribute_name)
+          value: (value (xpath))))
+      (statement
+        type: (type)
+        attribute: (attribute
+          name: (attribute_name)
+          value: (value (xpath))))
+      (statement
+        type: (type)
+        attribute: (attribute
+          name: (attribute_name)
+          value: (value (xpath)))))))
+
+==================
+Unquoted ref positional value
+==================
+
+alias /org/service/database
+
+---
+
+(document
+  (statement
+    type: (type)
+    value: (positional_value (xpath))))
+
+==================
+Hyphenated and underscore-prefixed attribute names are valid
+==================
+
+org background-color="blue" _internal=true
+
+---
+
+(document
+  (statement
+    type: (type)
+    attribute: (attribute
+      name: (attribute_name)
+      value: (value (string)))
+    attribute: (attribute
+      name: (attribute_name)
+      value: (value (boolean)))))
+
+==================
+A purely numeric attribute name is invalid
+==================
+
+org 123="x"
+
+---
+
+(document
+  (statement
+    type: (type)
+    value: (positional_value (number))
+    (ERROR
+      (string))))
+
+==================
+A digit-led attribute name is reinterpreted as a positional number
+followed by a separate attribute (known grammar limitation: the
+digit run is greedily consumed as a number token before the letters
+that follow it, so no syntax error surfaces at this layer -- the
+hand-written indent-parser tokenizer rejects this input directly)
+==================
+
+org 1abc="x"
+
+---
+
+(document
+  (statement
+    type: (type)
+    value: (positional_value (number))
+    attribute: (attribute
+      name: (attribute_name)
+      value: (value (string)))))
+
+==================
+Kind using the extended charset (leading/embedded '<', '>')
+==================
+
+<foo> name="x"
+
+---
+
+(document
+  (statement
+    type: (type)
+    attribute: (attribute
+      name: (attribute_name)
+      value: (value (string)))))
+
+==================
+A '!include' directive with a quoted string path
+==================
+
+org name="Org"
+    !include "./team.inml"
+
+---
+
+(document
+  (statement
+    type: (type)
+    attribute: (attribute
+      name: (attribute_name)
+      value: (value (string)))
+    (block
+      (statement
+        type: (type)
+        value: (positional_value (string))))))
+
+==================
+A parent-relative '!include' path
+==================
+
+!include "../team.inml"
+
+---
+
+(document
+  (statement
+    type: (type)
+    value: (positional_value (string))))
+
+==================
+A bare relative-path line with no '!include' prefix is not a valid kind
+==================
+
+./team.inml
+
+---
+
+(document
+  (ERROR
+    (UNEXPECTED '.')
+    (xpath)))
+
+==================
+A bare absolute-path line ("/...") is not a valid kind or include line
+==================
+
+/abs/path.inml
+
+---
+
+(document
+  (ERROR
+    (xpath)))

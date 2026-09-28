@@ -1,0 +1,24 @@
+{
+  "name": "indent-xpath",
+  "version": "0.1.0",
+  "description": "Generic-purpose XPath-like node selector for tree-shaped data (kind/value/attrs/children), usable standalone or from a language server.",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  }
+}

@@ -1,0 +1,2 @@
+org name="Acme"
+    !include "./nested/child.inml"

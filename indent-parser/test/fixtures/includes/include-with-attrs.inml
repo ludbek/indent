@@ -1,0 +1,2 @@
+org name="Acme"
+    !include "./team.inml" foo="bar"

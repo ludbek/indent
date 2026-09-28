@@ -1,0 +1,69 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "Indent",
+  "scopeName": "source.indent",
+  "patterns": [
+    { "include": "#comment" },
+    { "include": "#statement-with-continuation" },
+    { "include": "#line-continuation" },
+    { "include": "#statement-keyword" },
+    { "include": "#attribute" },
+    { "include": "#string" },
+    { "include": "#boolean" },
+    { "include": "#number" }
+  ],
+  "repository": {
+    "comment": {
+      "match": ";.*$",
+      "name": "comment.line.semicolon.indent"
+    },
+    "statement-with-continuation": {
+      "comment": "A statement whose first line ends in a trailing '\\' (see indent-parser/src/tokenizer.ts): the block spans every physically-continued line, applying the normal attribute/string/etc. patterns to each, until a line is reached that does not itself end in '\\'. Must come before #statement-keyword so a plain single-line statement isn't matched first. `end` is zero-width, anchored at the START of a line via lookahead rather than at true end-of-line via lookbehind: a lookbehind-anchored `(?<!\\\\)$` end pattern triggers a vscode-textmate/oniguruma engine quirk where inner `patterns` silently stop being applied on subsequent lines -- this lookahead form does not.",
+      "begin": "^\\s*(?!;)(\\S+)(?=.*\\\\$)",
+      "beginCaptures": {
+        "1": { "name": "keyword.control.indent" }
+      },
+      "end": "^(?!.*\\\\$)",
+      "patterns": [
+        { "include": "#comment" },
+        { "include": "#line-continuation" },
+        { "include": "#attribute" },
+        { "include": "#string" },
+        { "include": "#boolean" },
+        { "include": "#number" }
+      ]
+    },
+    "line-continuation": {
+      "comment": "A trailing '\\' joins this line with the next physical line (see indent-parser/src/tokenizer.ts). TextMate can't actually join lines, so this just gives the marker itself a visible color instead of leaving it unclassified.",
+      "match": "\\\\\\s*$",
+      "name": "constant.character.escape.indent"
+    },
+    "statement-keyword": {
+      "comment": "The leading bareword/tag of a line, e.g. \"org\", \"service\", \"->\", \"=>\", \">=<\", \"!include\" (a built-in directive kind; the leading '!' marks any current or future directive, e.g. a future \"!schema\"). Matched only at the true start of a line (after any leading indentation), mirroring the tree-sitter grammar's `type` rule. Excludes a leading \";\" so full-line comments are left to the #comment pattern instead. The `\\S+` match already covers a leading '!' with no charset change needed. Uses a lookbehind for the leading whitespace (`(?<=^\\s*)`) instead of consuming it directly: consuming it would make this match start at column 0, which is earlier than #attribute's match (naturally starting after the whitespace) and would always win regardless of list order -- using a lookbehind keeps both patterns tied at the same start column so declaration order decides. Listed BEFORE #attribute so kind tokens containing a literal '=' (e.g. \">=<\") are matched whole as a keyword instead of #attribute partially matching a leading fragment up to the '=' (e.g. misparsing \">=<\" as attribute name \">\" + '=' operator, leaving the trailing '<' unstyled).",
+      "match": "(?<=^\\s*)(?!;)(\\S+)",
+      "captures": {
+        "1": { "name": "keyword.control.indent" }
+      }
+    },
+    "attribute": {
+      "comment": "A `key=` attribute name immediately followed by the '=' operator. The value itself is left to the string/number/boolean patterns.",
+      "match": "([^\\s=\"]+)(=)",
+      "captures": {
+        "1": { "name": "variable.parameter.indent" },
+        "2": { "name": "keyword.operator.assignment.indent" }
+      }
+    },
+    "string": {
+      "match": "\"(?:\\\\.|[^\"\\\\])*\"",
+      "name": "string.quoted.double.indent"
+    },
+    "boolean": {
+      "match": "\\b(?:true|false)\\b",
+      "name": "constant.language.boolean.indent"
+    },
+    "number": {
+      "match": "(?<![\\w.])-?\\d+(?:\\.\\d+)?\\b",
+      "name": "constant.numeric.indent"
+    }
+  }
+}
