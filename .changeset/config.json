@@ -1,0 +1,20 @@
+{
+  "$schema": "https://unpkg.com/@changesets/config@4.0.1/schema.json",
+  "baseBranch": "master",
+  "access": "public",
+  "format": "auto",
+  "changelog": "@changesets/cli/changelog",
+  "commit": false,
+  "ignore": [],
+  "fixed": [
+    [
+      "indent-parser",
+      "indent-xpath",
+      "treesitter-indent",
+      "indent-language-server",
+      "vscode-indent-lang"
+    ]
+  ],
+  "linked": [],
+  "updateInternalDependencies": "patch"
+}

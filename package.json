@@ -10,9 +10,13 @@
   ],
   "scripts": {
     "build": "npm run build --workspaces --if-present",
-    "test": "npm run test --workspaces --if-present"
+    "test": "npm run test --workspaces --if-present",
+    "changeset": "changeset",
+    "version": "changeset version",
+    "release": "changeset publish"
   },
   "devDependencies": {
+    "@changesets/cli": "^3.0.3",
     "@types/node": "^26.4.0",
     "tsup": "^8.0.0",
     "typescript": "^5.4.0",
