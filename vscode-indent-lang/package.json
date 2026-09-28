@@ -2,9 +2,8 @@
   "name": "vscode-indent-lang",
   "displayName": "Indent",
   "description": "Syntax highlighting for Indent Markup Language (.inml) used by diagram-app.",
-  "version": "0.0.2",
+  "version": "0.1.0",
   "publisher": "diagram-app",
-  "private": true,
   "engines": {
     "vscode": "^1.75.0"
   },
@@ -68,7 +67,7 @@
     }
   },
   "dependencies": {
-    "indent-language-server": "*",
+    "indent-language-server": "^0.1.0",
     "vscode-languageclient": "^9.0.1"
   },
   "devDependencies": {
