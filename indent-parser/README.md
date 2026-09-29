@@ -1,6 +1,5 @@
-# indent-parser
-
-Parser for a generic, human-friendly, Indent Markup Language.
+# Indent, a Markup Language
+A markup language that is expressive enough to represent wide range of domains.
 
 ## Syntax
 
@@ -10,11 +9,14 @@ Parser for a generic, human-friendly, Indent Markup Language.
 ```
 
 ```
-org name="Org" color="green"
-    team name="OrgFoo"
-    service name="user-service"
-        API name="rollover"
-            -> entity="UpstreamOrg/super/rollover"
+org "Org" color="green"
+    team "Foo"
+    service "Web App" owner=//team[.="Foo"]
+        -> //API[.="login"] label="POST credentials"
+org "Idp"
+    service "auth"
+        API "login"
+
 ```
 
 - Each line is `<kind> [value] [key="value" ...]`: a leading keyword (`kind`),
@@ -56,14 +58,14 @@ raw text is kept, it is not resolved or split into steps by this package.
 Supported syntax:
 
 ```
-/UpstreamOrg/Member/Rollover                 ; absolute path, from the tree root
-//Rollover                                   ; descendant ("anywhere in the tree")
+/HiTech/AService/AnAPI                 ; absolute path, from the tree root
+//AnAPI
 /UpstreamOrg//Rollover                       ; mid-path descendant
-Member[name]                                 ; predicate: has attribute
-Member[name="Rollover"]                      ; predicate: attribute equals value
-Member[name="Rollover",type="REST"]          ; predicate: comma-separated AND list
-Member[.="Rollover"]                         ; predicate: self-value equals (node's own positional value)
-Member[0]                                    ; predicate: positional index (0-based)
+//Member[name]                                 ; predicate: has attribute
+//Member[name="Rollover"]                      ; predicate: attribute equals value
+//Member[name="Rollover",type="REST"]          ; predicate: comma-separated AND list
+//Member[.="Rollover"]                         ; predicate: self-value equals (node's own positional value)
+//Member[0]                                    ; predicate: positional index (0-based)
 ```
 
 This is not the full XPath grammar — bare relative paths without a leading
@@ -120,60 +122,41 @@ user
         tag "mathematician"
 ```
 
-### Sequence diagram
+### Sequence diagram markup
 
 `kind` is the message/action name (e.g. `->` for a call), nested under the
 participant issuing it, with `entity=` (a ref) pointing at the target:
 
 ```
-Client
-    -> entity=/Server/API/login
-        Server
-            -> entity=/Server/DB/query
-            <- entity=/Server/API/login
-    <- entity=/Client
+User type="actor"
+WebApp type="participant"
+AuthService type="participant"
+begin //User description="Login sequence diagram"
+    -> //WebApp message="Enters username and password"
+        -> //AuthService message="Post /login api"
+        <- message="An access token"
+    <- message="Redirects to dashboard"
 ```
 
-### C4 diagram
+### C4 diagram markup
 
 `kind` is a C4 element type (`system`, `container`, `component`, `rel`),
 with attributes carrying name/description/technology, and `rel` nodes
 pointing at other elements via ref:
 
 ```
-system name="Ordering System" color="green"
-    container name="API" tech="Node.js"
-        component name="OrderController"
-    container name="Database" tech="PostgreSQL"
-        rel target=/OrderingSystem/API description="reads/writes orders"
+system "Ordering System"
+    container "Auth Service" tech="Node.js"
+        component "Login API"
+            -> //component[.="maindb"] label="Get users"
+    container "Booking Service"
+        component "List booking API"
+            -> //component[.="maindb"] label="Get bookings"
+    container "Database" tech="PostgreSQL"
+        component "maindb"
+            table "users"
+            table "bookings"
 ```
-
-## Includes
-
-Multiple `.inml` files can be stitched together with an **include line**: a
-line whose entire content is a bare path starting with `/`, `./`, or `../`
-(no attributes allowed), e.g.:
-
-```
-org name="Acme"
-    ./shared/team.inml
-    service name="user-service"
-```
-
-- The path is resolved relative to the directory of the file containing the
-  include line (`/...` paths are used as-is).
-- The include line is **replaced** by the referenced file's content: the
-  included file's top-level lines land at the same indentation depth as the
-  include line itself, and all of their descendants shift by that same
-  amount. If the included file has multiple root-level lines, they all
-  become siblings at that depth.
-- Includes may be nested (an included file can itself include other files).
-- Include lines must not have attributes (e.g. `./team.inml foo="bar"` is a
-  parse error).
-- Circular includes are detected and raise a `IndentParseError`.
-
-Include resolution requires filesystem access, so it is only available via
-`parseFile`, not the fs-free `parse`.
 
 ## API
 
