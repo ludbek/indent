@@ -16,12 +16,12 @@ This package implements a **subset** of XPath, not the full grammar. See
 //api                       // descendant: match anywhere in the tree, any depth
 //service//endpoint         // mid-path descendant: any depth under a matched service
 /org/team/service           // absolute path: from the tree root, one level per step
-service[owner]              // predicate: attribute exists
-service[owner="ateam"]      // predicate: attribute equals a quoted string
-service[port=8080]          // predicate: attribute equals an unquoted number
-service[active=true]        // predicate: attribute equals an unquoted boolean
-service[owner="ateam",port=8080]     // multi-predicate: comma-separated, ANDed together
-service[.="Auth Service"]            // self-axis: match the node's own positional `value`
+//service[owner]              // predicate: attribute exists
+//service[owner="ateam"]      // predicate: attribute equals a quoted string
+//service[port=8080]          // predicate: attribute equals an unquoted number
+//service[active=true]        // predicate: attribute equals an unquoted boolean
+//service[owner="ateam",port=8080]     // multi-predicate: comma-separated, ANDed together
+//service[.="Auth Service"]            // self-axis: match the node's own positional `value`
 ```
 
 - **Steps** (`/name` or `//name`) match a node's `kind`, case-insensitively.
