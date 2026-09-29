@@ -21,6 +21,36 @@ const { roots: rootsFromDisk } = parseFile("entry.inml");
 `parse` and `parseFile` throw `IndentParseError` (with `line` and, for
 `parseFile`, a `file` property) on malformed input.
 
+### Wire format
+
+`encodeWireFormat`/`decodeWireFormat` convert between normal
+4-space-indented Indent source and a compact single-line "wire format"
+that replaces newline + indentation-change with escape sequences. This
+is a pure text transform (no tokenizing/parsing) meant for transmitting
+`.inml` structure without embedded raw newlines.
+
+```ts
+import { encodeWireFormat, decodeWireFormat } from "indent-parser";
+
+const wire = encodeWireFormat(source);
+const roundTripped = decodeWireFormat(wire);
+// roundTripped === source (modulo normalizing line endings to `\n`)
+```
+
+Escape sequences, one character per depth level crossed:
+- `\+` — indent one level deeper than the previous line.
+- `\-` — dedent one level shallower than the previous line.
+- `\n` — a bare newline, used when the next line is at the *same* depth
+  (a sibling) and no indentation change needs to be communicated.
+
+Runs of `\+`/`\-` are used for multi-level jumps, e.g. going from depth 0
+to depth 2 encodes as `\+\+`, and back down to depth 0 as `\-\-`. Blank
+lines and comment-only (`;...`) lines carry no indentation of their own,
+so they are encoded as a same-depth (`\n`) transition.
+
+`decodeWireFormat` throws `IndentParseError` if a `\-` run would dedent
+past depth 0.
+
 ## Development
 
 ```
