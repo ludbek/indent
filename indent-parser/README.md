@@ -40,13 +40,14 @@ const roundTripped = decodeWireFormat(wire);
 Escape sequences, one character per depth level crossed:
 - `\+` — indent one level deeper than the previous line.
 - `\-` — dedent one level shallower than the previous line.
-- `\n` — a bare newline, used when the next line is at the *same* depth
-  (a sibling) and no indentation change needs to be communicated.
+- `\=` — same depth as the previous line (a sibling); no indentation
+  change needs to be communicated, but the marker is still required so
+  the wire format never contains a raw embedded newline.
 
 Runs of `\+`/`\-` are used for multi-level jumps, e.g. going from depth 0
 to depth 2 encodes as `\+\+`, and back down to depth 0 as `\-\-`. Blank
 lines and comment-only (`;...`) lines carry no indentation of their own,
-so they are encoded as a same-depth (`\n`) transition.
+so they are encoded as a same-depth (`\=`) transition.
 
 `decodeWireFormat` throws `IndentParseError` if a `\-` run would dedent
 past depth 0.
