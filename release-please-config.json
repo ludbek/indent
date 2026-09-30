@@ -1,0 +1,20 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "packages": {
+    "indent-parser": {
+      "release-type": "node"
+    },
+    "indent-xpath": {
+      "release-type": "node"
+    },
+    "treesitter-indent": {
+      "release-type": "node"
+    },
+    "indent-language-server": {
+      "release-type": "node"
+    },
+    "vscode-indent-lang": {
+      "release-type": "node"
+    }
+  }
+}

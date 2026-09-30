@@ -2,6 +2,15 @@
   "name": "indent-parser",
   "version": "0.1.0",
   "description": "Parser for a generic, human-friendly, indentation-based tree markup language (XML-light), Indent Markup Language (.inml).",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ludbek/indent.git",
+    "directory": "indent-parser"
+  },
+  "author": {
+    "name": "Suren Shrestha"
+  },
   "type": "module",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",

@@ -1,0 +1,7 @@
+{
+  "indent-parser": "0.1.0",
+  "indent-xpath": "0.1.0",
+  "treesitter-indent": "0.1.0",
+  "indent-language-server": "0.1.0",
+  "vscode-indent-lang": "0.1.0"
+}

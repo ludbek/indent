@@ -1,0 +1,94 @@
+name: Release
+
+on:
+  push:
+    branches:
+      - master
+
+concurrency: ${{ github.workflow }}-${{ github.ref }}
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+    outputs:
+      releases_created: ${{ steps.release.outputs.releases_created }}
+      indent-parser--release_created: ${{ steps.release.outputs['indent-parser--release_created'] }}
+      indent-xpath--release_created: ${{ steps.release.outputs['indent-xpath--release_created'] }}
+      treesitter-indent--release_created: ${{ steps.release.outputs['treesitter-indent--release_created'] }}
+      indent-language-server--release_created: ${{ steps.release.outputs['indent-language-server--release_created'] }}
+      vscode-indent-lang--release_created: ${{ steps.release.outputs['vscode-indent-lang--release_created'] }}
+    steps:
+      - name: Create release PR or tag releases
+        id: release
+        uses: googleapis/release-please-action@v4
+        with:
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+  publish-npm:
+    needs: release-please
+    if: ${{ needs.release-please.outputs.releases_created == 'true' }}
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        package:
+          - indent-parser
+          - indent-xpath
+          - treesitter-indent
+          - indent-language-server
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build --workspaces --if-present
+
+      - name: Publish ${{ matrix.package }}
+        if: ${{ needs.release-please.outputs[format('{0}--release_created', matrix.package)] == 'true' }}
+        working-directory: ${{ matrix.package }}
+        run: npm publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  publish-vscode-extension:
+    needs: release-please
+    if: ${{ needs.release-please.outputs['vscode-indent-lang--release_created'] == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build --workspaces --if-present
+
+      - name: Install vsce
+        run: npm install -g @vscode/vsce
+
+      - name: Publish VS Code extension
+        working-directory: vscode-indent-lang
+        run: vsce publish -p "$VSCE_PAT"
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}

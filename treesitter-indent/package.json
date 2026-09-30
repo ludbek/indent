@@ -2,10 +2,14 @@
   "name": "treesitter-indent",
   "version": "0.1.0",
   "description": "Tree-sitter grammar for Indent Markup Language (.inml) used by diagram-app",
-  "repository": "https://github.com/tree-sitter/treesitter-indent",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ludbek/indent.git",
+    "directory": "treesitter-indent"
+  },
   "license": "MIT",
   "author": {
-    "name": "Suren"
+    "name": "Suren Shrestha"
   },
   "main": "bindings/node",
   "types": "bindings/node",

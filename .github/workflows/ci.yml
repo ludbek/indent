@@ -29,5 +29,3 @@ jobs:
 
       - name: Test
         run: npm run test --workspaces --if-present
-
-      # TODO: add a publish job once we're ready to release packages.

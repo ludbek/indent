@@ -2,6 +2,15 @@
   "name": "indent-language-server",
   "version": "0.1.0",
   "description": "Language Server Protocol implementation for Indent Markup Language",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ludbek/indent.git",
+    "directory": "indent-language-server"
+  },
+  "author": {
+    "name": "Suren Shrestha"
+  },
   "type": "module",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
