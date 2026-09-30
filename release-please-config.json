@@ -16,5 +16,6 @@
     "vscode-indent-lang": {
       "release-type": "node"
     }
-  }
+  },
+  "plugins": ["node-workspace"]
 }
