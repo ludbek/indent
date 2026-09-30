@@ -40,7 +40,7 @@ export interface IncludeLink {
 }
 
 export class WorkspaceIndex {
-  public parser: CstParser;
+  public parser!: CstParser;
   public documents = new Map<string, AstDocument>();
   public nodesByPath = new Map<string, IndexedNode>();
   public nodesById = new Map<string, IndexedNode>();
@@ -61,8 +61,12 @@ export class WorkspaceIndex {
    */
   public preloadedUris: Set<string> = new Set();
 
-  constructor() {
-    this.parser = new CstParser();
+  private constructor() {}
+
+  static async create(): Promise<WorkspaceIndex> {
+    const index = new WorkspaceIndex();
+    index.parser = await CstParser.create();
+    return index;
   }
 
   /**

@@ -1,8 +1,12 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeAll } from "vitest";
 import { CstParser } from "../src/cst.js";
 
 describe("CstParser", () => {
-  const parser = new CstParser();
+  let parser: CstParser;
+
+  beforeAll(async () => {
+    parser = await CstParser.create();
+  });
 
   it("parses basic statements with exact positions", () => {
     const text = `org name="Acme" color="green"

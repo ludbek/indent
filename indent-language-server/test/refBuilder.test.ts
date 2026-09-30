@@ -27,14 +27,14 @@ describe("refBuilder", () => {
             api "Login" method="GET"
 `;
 
-  function makeIndex(): WorkspaceIndex {
-    const index = new WorkspaceIndex();
+  async function makeIndex(): Promise<WorkspaceIndex> {
+    const index = await WorkspaceIndex.create();
     index.setDocument(uri, source);
     return index;
   }
 
-  it("Tier 1: emits //kind for a globally unique kind", () => {
-    const index = makeIndex();
+  it("Tier 1: emits //kind for a globally unique kind", async () => {
+    const index = await makeIndex();
     const org = index.getNodeByPath("/org")!;
     expect(org).toBeDefined();
     expect(buildNodeRef(index, org)).toBe("//org");
@@ -44,8 +44,8 @@ describe("refBuilder", () => {
     expect(buildNodeRef(index, endpoint)).toBe("//endpoint");
   });
 
-  it("Tier 2: emits //kind[.=value] for a unique (kind, value) pair", () => {
-    const index = makeIndex();
+  it("Tier 2: emits //kind[.=value] for a unique (kind, value) pair", async () => {
+    const index = await makeIndex();
     const authService = [...index.nodesByPath.values()].find(
       (n) => n.kind === "service" && n.value?.value === "Auth Service",
     )!;
@@ -61,8 +61,8 @@ describe("refBuilder", () => {
     expect(buildNodeRef(index, logout)).toBe('//api[.="Logout"]');
   });
 
-  it("Tier 3: falls back to a fully-indexed path when kind and (kind,value) both collide", () => {
-    const index = makeIndex();
+  it("Tier 3: falls back to a fully-indexed path when kind and (kind,value) both collide", async () => {
+    const index = await makeIndex();
     const platformTeam = [...index.nodesByPath.values()].find(
       (n) => n.kind === "team" && n.attrs.name?.value === "Platform",
     )!;
@@ -87,10 +87,10 @@ describe("refBuilder", () => {
     ]);
   });
 
-  it("Tier 2 distinguishes string vs number/boolean values with the same textual form", () => {
+  it("Tier 2 distinguishes string vs number/boolean values with the same textual form", async () => {
     // A synthetic pair where the same kind has both a numeric and string
     // positional value that stringify identically -- must not collide.
-    const index2 = new WorkspaceIndex();
+    const index2 = await WorkspaceIndex.create();
     index2.setDocument(
       "file:///workspace/typed.inml",
       `org name="X"
@@ -108,16 +108,16 @@ describe("refBuilder", () => {
     expect(buildNodeRef(index2, stringy)).toBe('//widget[.="42"]');
   });
 
-  it("computeRefFrequencyMaps can be precomputed once and reused across calls", () => {
-    const index = makeIndex();
+  it("computeRefFrequencyMaps can be precomputed once and reused across calls", async () => {
+    const index = await makeIndex();
     const freq = computeRefFrequencyMaps(index);
     for (const node of index.nodesByPath.values()) {
       expect(buildNodeRef(index, node, freq)).toBe(buildNodeRef(index, node));
     }
   });
 
-  it("round-trips: every generated ref resolves back through indent-xpath to exactly its own node", () => {
-    const index = makeIndex();
+  it("round-trips: every generated ref resolves back through indent-xpath to exactly its own node", async () => {
+    const index = await makeIndex();
     const forest = buildXPathForest(index.rootNodes, index.nodesByPath);
     for (const node of index.nodesByPath.values()) {
       const ref = buildNodeRef(index, node);
@@ -128,8 +128,8 @@ describe("refBuilder", () => {
     }
   });
 
-  it("getSearchableNodes returns one entry per workspace node with label/description/detail/ref", () => {
-    const index = makeIndex();
+  it("getSearchableNodes returns one entry per workspace node with label/description/detail/ref", async () => {
+    const index = await makeIndex();
     const items = getSearchableNodes(index);
     expect(items.length).toBe(index.nodesByPath.size);
     const org = items.find((i) => i.ref === "//org")!;
@@ -139,8 +139,8 @@ describe("refBuilder", () => {
     expect(org.label).toBe("Acme");
   });
 
-  it("getSearchableNodes detail is the node's own source statement, excluding children", () => {
-    const index = makeIndex();
+  it("getSearchableNodes detail is the node's own source statement, excluding children", async () => {
+    const index = await makeIndex();
     const items = getSearchableNodes(index);
     const authService = items.find((i) => i.ref === '//service[.="Auth Service"]')!;
     expect(authService).toBeDefined();

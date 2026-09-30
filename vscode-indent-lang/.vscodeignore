@@ -1,5 +1,9 @@
 .vscode/**
 test/**
+scripts/**
+extension.js
+extension.js.map
 node_modules/**
+!node_modules/web-tree-sitter/**
 package-lock.json
 *.vsix

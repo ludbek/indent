@@ -24,11 +24,11 @@ import { uriToFsPath } from "./indexer.js";
 import { PROJECT_FILENAME } from "indent-parser";
 import { basename } from "node:path";
 
-export function createIndentLanguageServer(customConnection?: _Connection) {
+export async function createIndentLanguageServer(customConnection?: _Connection) {
   const connection =
     customConnection || createConnection(ProposedFeatures.all);
   const documents: TextDocuments<TextDocument> = new TextDocuments(TextDocument);
-  const index = new WorkspaceIndex();
+  const index = await WorkspaceIndex.create();
 
   connection.onInitialize((params: InitializeParams): InitializeResult => {
     const roots: string[] = [];
@@ -184,7 +184,7 @@ export function createIndentLanguageServer(customConnection?: _Connection) {
   return { connection, index, documents };
 }
 
-export function startServer() {
-  const { connection } = createIndentLanguageServer();
+export async function startServer() {
+  const { connection } = await createIndentLanguageServer();
   connection.listen();
 }

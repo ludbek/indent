@@ -8,7 +8,9 @@ const {
 let client;
 
 function activate(context) {
-  const serverModule = require.resolve("indent-language-server/dist/cli.cjs");
+  // Bundled alongside dist/extension.js by scripts/build.js — see that file
+  // for why this isn't `require.resolve("indent-language-server/...")`.
+  const serverModule = path.join(__dirname, "server.cjs");
 
   const serverOptions = {
     run: { module: serverModule, transport: TransportKind.ipc },

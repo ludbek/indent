@@ -1,6 +1,7 @@
-import Parser from "tree-sitter";
-// @ts-ignore
-import IndentGrammar from "treesitter-indent";
+import { Parser, Language, Node, Tree } from "web-tree-sitter";
+import { fileURLToPath } from "node:url";
+import { join, dirname } from "node:path";
+import { existsSync } from "node:fs";
 import type { Range, Position } from "vscode-languageserver";
 import type {
   AstAttribute,
@@ -11,17 +12,59 @@ import type {
   AstValueType,
 } from "./types.js";
 
+declare const __dirname: string | undefined;
+
+function resolveModuleDir(): string {
+  // esbuild/tsup emit both CJS and ESM builds from this same source. In the
+  // CJS build, native __dirname exists and import.meta.url is empty; in the
+  // ESM build it's the reverse. Support both without breaking either format.
+  if (typeof __dirname !== "undefined") return __dirname;
+  return dirname(fileURLToPath(import.meta.url));
+}
+
+const currentDir = resolveModuleDir();
+
+// Grammar wasm ships alongside the built dist output (copied by the
+// `copy-wasm` build step -- see package.json's `build` script and
+// scripts/copy-wasm.js). In dev (running src/ directly under ts-node/vitest)
+// it resolves to the sibling treesitter-indent workspace package instead.
+function resolveGrammarWasmPath(): string {
+  const bundled = join(currentDir, "tree-sitter-indent.wasm");
+  const workspace = join(currentDir, "..", "..", "treesitter-indent", "tree-sitter-indent.wasm");
+  return existsSync(bundled) ? bundled : workspace;
+}
+
+let languagePromise: Promise<Language> | null = null;
+
+async function getLanguage(): Promise<Language> {
+  if (!languagePromise) {
+    languagePromise = (async () => {
+      await Parser.init();
+      return Language.load(resolveGrammarWasmPath());
+    })();
+  }
+  return languagePromise;
+}
+
 export class CstParser {
   private parser: Parser;
   private static globalId = 0;
 
-  constructor() {
-    this.parser = new Parser();
-    this.parser.setLanguage(IndentGrammar as any);
+  static async create(): Promise<CstParser> {
+    const lang = await getLanguage();
+    return new CstParser(lang);
   }
 
-  public parse(uri: string, text: string, version: number = 1): { doc: AstDocument; tree: Parser.Tree } {
+  private constructor(lang: Language) {
+    this.parser = new Parser();
+    this.parser.setLanguage(lang);
+  }
+
+  public parse(uri: string, text: string, version: number = 1): { doc: AstDocument; tree: Tree } {
     const tree = this.parser.parse(text);
+    if (!tree) {
+      throw new Error(`Failed to parse ${uri}: parser returned no tree`);
+    }
     const errors: AstSyntaxError[] = [];
     const allStatements: AstStatement[] = [];
 
@@ -30,12 +73,12 @@ export class CstParser {
       character: p.column,
     });
 
-    const tsNodeToRange = (n: Parser.SyntaxNode): Range => ({
+    const tsNodeToRange = (n: Node): Range => ({
       start: tsPointToPosition(n.startPosition),
       end: tsPointToPosition(n.endPosition),
     });
 
-    const collectErrors = (node: Parser.SyntaxNode) => {
+    const collectErrors = (node: Node) => {
       const isMissing = typeof (node as any).isMissing === "function" ? (node as any).isMissing() : Boolean((node as any).isMissing);
       if (isMissing) {
         errors.push({
@@ -59,7 +102,7 @@ export class CstParser {
     collectErrors(tree.rootNode);
 
     const parseStatement = (
-      node: Parser.SyntaxNode,
+      node: Node,
       parent?: AstStatement,
       depth: number = 0
     ): AstStatement | null => {

@@ -53,13 +53,13 @@ describe("onDidChangeWatchedFiles", () => {
     if (tmpDir) rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  it("refreshes the project graph and re-publishes diagnostics for open documents on any watched .inml change", () => {
+  it("refreshes the project graph and re-publishes diagnostics for open documents on any watched .inml change", async () => {
     tmpDir = mkdtempSync(join(tmpdir(), "indent-server-"));
     writeFileSync(join(tmpDir, "project.inml"), `entry "./root.inml"\n`);
     writeFileSync(join(tmpDir, "root.inml"), `org name="Acme"\n`);
 
     const { stub, handlers, sentDiagnostics } = createStubConnection();
-    const { index } = createIndentLanguageServer(stub);
+    const { index } = await createIndentLanguageServer(stub);
 
     // Simulate server init against the temp workspace root.
     handlers.onInitialize({ workspaceFolders: [{ uri: fsPathToUri(tmpDir), name: "root" }] });
