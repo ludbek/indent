@@ -3,11 +3,12 @@ import { IndentParseError } from "./types.js";
 /**
  * Encodes/decodes Indent source text between its normal 4-space-indented,
  * newline-separated form and a compact "wire format" that replaces every
- * `\n` + indentation change with a run of `\+` (indent one level deeper)
- * or `\-` (dedent one level shallower) escape sequences -- one character
- * per depth level crossed. A newline between two lines at the *same*
- * depth (siblings) is left as a bare `\n`, since no indentation change
- * needs to be communicated.
+ * newline + indentation change with a run of `\+` (indent one level
+ * deeper) or `\-` (dedent one level shallower) escape sequences -- one
+ * character per depth level crossed. A newline between two lines at the
+ * *same* depth (siblings) is encoded as `\=`, since no indentation
+ * change needs to be communicated but a marker is still required so the
+ * wire format never contains a raw embedded newline.
  *
  * This is a pure text transform: it does not tokenize or parse Indent,
  * and it round-trips arbitrary Indent source (including blank lines,
@@ -26,7 +27,7 @@ import { IndentParseError } from "./types.js";
  * message/contract as the tokenizer. Blank lines and lines that are
  * entirely a comment (`;...`) are not depth-bearing; they carry no
  * indentation info of their own, so they are encoded as a same-depth
- * (bare `\n`) transition with any leading whitespace stripped from their
+ * (`\=`) transition with any leading whitespace stripped from their
  * content. A genuinely empty line round-trips back to an empty line; a
  * comment-only line's indentation is normalized to the current depth's
  * 4-space convention on decode -- this does not change how Indent parses
@@ -34,12 +35,9 @@ import { IndentParseError } from "./types.js";
  * but means such a line's exact leading-whitespace byte sequence is not
  * guaranteed to round-trip verbatim.
  *
- * Known limitation: a literal backslash sequence inside quoted string
- * content that happens to read as `\+` or `\-` (e.g.
- * `description="a\+b"`) is ambiguous with the escape sequences introduced
- * here. The Indent tokenizer does not currently define any string escapes
- * beyond `\"`, so this is a narrow, pre-existing kind of collision risk
- * rather than one newly introduced by this format.
+ * Indent does not permit `\+`, `\-`, or `\=` sequences to appear outside
+ * of string literals, so these escape sequences are unambiguous wire
+ * format markers with no collision risk against real content.
  */
 
 /** Computes the indentation depth of a single raw (non-blank) line, and
@@ -104,7 +102,7 @@ export function encodeWireFormat(source: string): string {
     } else {
       const delta = depth - currentDepth;
       if (delta === 0) {
-        out += "\n" + content;
+        out += "\\=" + content;
       } else if (delta > 0) {
         out += "\\+".repeat(delta) + content;
       } else {
@@ -119,15 +117,15 @@ export function encodeWireFormat(source: string): string {
 
 /**
  * Reverses `encodeWireFormat`, expanding `\+`/`\-` escape runs back into
- * `\n` plus the appropriate 4-space indentation, and bare `\n` back into
- * `\n` plus the current (unchanged) depth's indentation.
+ * `\n` plus the appropriate 4-space indentation, and `\=` back into `\n`
+ * plus the current (unchanged) depth's indentation.
  */
 export function decodeWireFormat(encoded: string): string {
   let out = "";
   let depth = 0;
   let i = 0;
   const n = encoded.length;
-  // True right after a `\n` (or `\+`/`\-` run) has been emitted, until the
+  // True right after a `\=` (or `\+`/`\-` run) has been emitted, until the
   // first regular content char of that line is seen. Indentation spaces
   // are only materialized lazily, right before that first char -- so a
   // line that turns out to be genuinely empty (immediately followed by
@@ -137,10 +135,10 @@ export function decodeWireFormat(encoded: string): string {
 
   while (i < n) {
     const ch = encoded[i];
-    if (ch === "\n") {
+    if (ch === "\\" && encoded[i + 1] === "=") {
       out += "\n";
       pendingIndent = true;
-      i++;
+      i += 2;
       continue;
     }
     if (ch === "\\" && (encoded[i + 1] === "+" || encoded[i + 1] === "-")) {

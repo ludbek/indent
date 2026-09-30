@@ -19,10 +19,10 @@ describe("wireFormat", () => {
     expect(encodeWireFormat(source)).toBe('org name="A"\\+team name="B"');
   });
 
-  it("encodes sibling lines (same depth) with a bare \\n", () => {
+  it("encodes sibling lines (same depth) with a \\=", () => {
     const source = 'org name="A"\n    team name="B"\n    team name="C"';
     expect(encodeWireFormat(source)).toBe(
-      'org name="A"\\+team name="B"\nteam name="C"',
+      'org name="A"\\+team name="B"\\=team name="C"',
     );
   });
 
