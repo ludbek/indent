@@ -1,9 +1,19 @@
 {
   "name": "vscode-indent-lang",
+  "private": true,
   "displayName": "Indent",
   "description": "Syntax highlighting for Indent Markup Language (.inml) used by diagram-app.",
   "version": "0.1.0",
-  "publisher": "diagram-app",
+  "publisher": "ludbek",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ludbek/indent.git",
+    "directory": "vscode-indent-lang"
+  },
+  "author": {
+    "name": "Suren Shrestha"
+  },
   "engines": {
     "vscode": "^1.75.0"
   },
