@@ -1,3 +1,6 @@
 import { startServer } from "./server.js";
 
-startServer();
+startServer().catch((err) => {
+  console.error(err);
+  process.exit(1);
+});

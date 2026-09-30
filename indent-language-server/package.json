@@ -41,17 +41,16 @@
     "bin"
   ],
   "scripts": {
-    "build": "tsup",
+    "build": "tsup && node scripts/copy-wasm.js",
     "dev": "tsup --watch",
     "test": "vitest run"
   },
   "dependencies": {
     "indent-parser": "^0.1.0",
     "indent-xpath": "^0.1.0",
-    "tree-sitter": "^0.25.1",
-    "treesitter-indent": "^0.1.0",
     "vscode-languageserver": "^9.0.1",
     "vscode-languageserver-textdocument": "^1.0.12",
-    "vscode-uri": "^3.1.0"
+    "vscode-uri": "^3.1.0",
+    "web-tree-sitter": "^0.27.0"
   }
 }

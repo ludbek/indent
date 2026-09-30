@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeAll } from "vitest";
 import { WorkspaceIndex } from "../src/indexer.js";
 import { computeDiagnostics } from "../src/diagnostics.js";
 import { computeCompletions as computeCompletionsRaw } from "../src/completions.js";
@@ -38,8 +38,12 @@ describe("LSP Features Suite", () => {
         table name="users" pk="id"
 `;
 
-  const index = new WorkspaceIndex();
-  index.setDocument(uri, source);
+  let index: WorkspaceIndex;
+
+  beforeAll(async () => {
+    index = await WorkspaceIndex.create();
+    index.setDocument(uri, source);
+  });
 
   it("Diagnostics: returns clean diagnostics on valid document", () => {
     const diags = computeDiagnostics(uri, index);

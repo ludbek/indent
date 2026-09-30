@@ -1,1 +1,5 @@
 node_modules/
+*.vsix
+vscode-indent-lang/dist/
+treesitter-indent/*.wasm
+indent-language-server/dist/

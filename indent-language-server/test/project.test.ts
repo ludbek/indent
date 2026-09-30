@@ -101,13 +101,13 @@ describe("orphan-file diagnostic", () => {
     if (tmpDir) rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  it("warns on a .inml file not reachable from any discovered project.inml entry", () => {
+  it("warns on a .inml file not reachable from any discovered project.inml entry", async () => {
     tmpDir = mkdtempSync(join(tmpdir(), "indent-project-"));
     writeFileSync(join(tmpDir, "project.inml"), `entry "./root.inml"\n`);
     writeFileSync(join(tmpDir, "root.inml"), `org name="Acme"\n`);
     writeFileSync(join(tmpDir, "orphan.inml"), `team name="Orphan"\n`);
 
-    const index = new WorkspaceIndex();
+    const index = await WorkspaceIndex.create();
     index.refreshProjects([tmpDir]);
 
     const rootUri = fsPathToUri(join(tmpDir, "root.inml"));
@@ -128,11 +128,11 @@ describe("orphan-file diagnostic", () => {
     expect(projectDiags.some((d) => d.message.includes("not reachable"))).toBe(false);
   });
 
-  it("does not warn when no project.inml exists anywhere in the workspace", () => {
+  it("does not warn when no project.inml exists anywhere in the workspace", async () => {
     tmpDir = mkdtempSync(join(tmpdir(), "indent-project-"));
     writeFileSync(join(tmpDir, "loose.inml"), `team name="Loose"\n`);
 
-    const index = new WorkspaceIndex();
+    const index = await WorkspaceIndex.create();
     index.refreshProjects([tmpDir]);
 
     const uri = fsPathToUri(join(tmpDir, "loose.inml"));
@@ -142,7 +142,7 @@ describe("orphan-file diagnostic", () => {
     expect(diags.some((d) => d.message.includes("not reachable"))).toBe(false);
   });
 
-  it("uses nearest-ancestor project.inml, not the global reachableFiles union, in a monorepo with sibling projects", () => {
+  it("uses nearest-ancestor project.inml, not the global reachableFiles union, in a monorepo with sibling projects", async () => {
     tmpDir = mkdtempSync(join(tmpdir(), "indent-project-"));
 
     // Project A: reachable set = {a-root.inml}
@@ -159,7 +159,7 @@ describe("orphan-file diagnostic", () => {
     writeFileSync(join(tmpDir, "project-b", "b-root.inml"), `org name="B"\n`);
     writeFileSync(join(tmpDir, "project-b", "b-orphan.inml"), `team name="Orphan"\n`);
 
-    const index = new WorkspaceIndex();
+    const index = await WorkspaceIndex.create();
     index.refreshProjects([tmpDir]);
 
     // Sanity: the global union (legacy reachableFiles) contains both
@@ -191,7 +191,7 @@ describe("preloadProjectFiles", () => {
     if (tmpDir) rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  it("resolves a ref in an open file to a node defined in a genuinely-included but never-opened file", () => {
+  it("resolves a ref in an open file to a node defined in a genuinely-included but never-opened file", async () => {
     tmpDir = mkdtempSync(join(tmpdir(), "indent-project-"));
     writeFileSync(join(tmpDir, "project.inml"), `entry "./root.inml"\n`);
     writeFileSync(
@@ -209,7 +209,7 @@ describe("preloadProjectFiles", () => {
     // file's mere existence, matching a real "unsaved edit" scenario.
     writeFileSync(join(tmpDir, "api.inml"), `API "MB Save Tfn"\n`);
 
-    const index = new WorkspaceIndex();
+    const index = await WorkspaceIndex.create();
     index.refreshProjects([tmpDir]);
 
     const apiUri = fsPathToUri(join(tmpDir, "api.inml"));
@@ -236,13 +236,13 @@ describe("preloadProjectFiles", () => {
     expect(index.preloadedUris.has(upstreamUri)).toBe(true);
   });
 
-  it("does not clobber a genuinely open/edited document's content", () => {
+  it("does not clobber a genuinely open/edited document's content", async () => {
     tmpDir = mkdtempSync(join(tmpdir(), "indent-project-"));
     writeFileSync(join(tmpDir, "project.inml"), `entry "./root.inml"\n`);
     writeFileSync(join(tmpDir, "root.inml"), `!include "./a.inml"\n`);
     writeFileSync(join(tmpDir, "a.inml"), `team name="OnDisk"\n`);
 
-    const index = new WorkspaceIndex();
+    const index = await WorkspaceIndex.create();
     index.refreshProjects([tmpDir]);
 
     const aUri = fsPathToUri(join(tmpDir, "a.inml"));
@@ -256,13 +256,13 @@ describe("preloadProjectFiles", () => {
     expect(index.preloadedUris.has(aUri)).toBe(false);
   });
 
-  it("evicts a previously preloaded file that falls out of reachableFiles", () => {
+  it("evicts a previously preloaded file that falls out of reachableFiles", async () => {
     tmpDir = mkdtempSync(join(tmpdir(), "indent-project-"));
     writeFileSync(join(tmpDir, "project.inml"), `entry "./root.inml"\n`);
     writeFileSync(join(tmpDir, "root.inml"), `!include "./a.inml"\n`);
     writeFileSync(join(tmpDir, "a.inml"), `team name="A"\n`);
 
-    const index = new WorkspaceIndex();
+    const index = await WorkspaceIndex.create();
     index.refreshProjects([tmpDir]);
     index.preloadProjectFiles();
 

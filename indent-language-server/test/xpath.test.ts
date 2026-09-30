@@ -1,13 +1,16 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeAll } from "vitest";
 import { parseXPath, selectNodes } from "indent-xpath";
 import { WorkspaceIndex } from "../src/indexer.js";
 import { buildXPathForest } from "../src/xpathTree.js";
 
 describe("Ref Reference Resolver", () => {
-  const index = new WorkspaceIndex();
-  index.setDocument(
-    "file:///main.inml",
-    `org name="Rest"
+  let index: WorkspaceIndex;
+
+  beforeAll(async () => {
+    index = await WorkspaceIndex.create();
+    index.setDocument(
+      "file:///main.inml",
+      `org name="Rest"
     service name="partner"
         API name="Health"
             -> entity=/org[name="Rest"]/service[name="RDS"]/database
@@ -17,7 +20,8 @@ describe("Ref Reference Resolver", () => {
 org name="Globex"
     service name="core"
 `
-  );
+    );
+  });
 
   const forest = () => buildXPathForest(index.rootNodes, index.nodesByPath);
 
@@ -82,8 +86,8 @@ org name="Globex"
     );
   });
 
-  it("resolves a node's own positional value when it is a ref", () => {
-    const refIndex = new WorkspaceIndex();
+  it("resolves a node's own positional value when it is a ref", async () => {
+    const refIndex = await WorkspaceIndex.create();
     refIndex.setDocument(
       "file:///positional.inml",
       `org name="Rest"
