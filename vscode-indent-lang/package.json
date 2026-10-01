@@ -3,7 +3,7 @@
   "private": true,
   "displayName": "Indent",
   "description": "Syntax highlighting for Indent Markup Language (.inml)",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "publisher": "SurenShrestha",
   "license": "MIT",
   "repository": {
