@@ -1,7 +1,6 @@
 # vscode-indent-lang
 
-VS Code syntax highlighting for the Indent Markup Language used by
-`diagram-app` (`.inml` files).
+VS Code syntax highlighting for the Indent Markup Language.
 
 This is the pragmatic "baseline" highlighting extension: it uses a plain
 TextMate grammar (`syntaxes/indent.tmLanguage.json`), since VS Code's built-in

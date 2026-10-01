@@ -1,6 +1,6 @@
 [package]
 name = "tree-sitter-indent"
-description = "Tree-sitter grammar for Indent Markup Language (.inml) used by diagram-app"
+description = "Tree-sitter grammar for Indent Markup Language (.inml)"
 version = "0.1.0"
 authors = ["Suren"]
 license = "MIT"

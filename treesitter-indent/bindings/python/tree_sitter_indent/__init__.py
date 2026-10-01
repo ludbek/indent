@@ -1,4 +1,4 @@
-"""Tree-sitter grammar for Indent Markup Language (.inml) used by diagram-app"""
+"""Tree-sitter grammar for Indent Markup Language (.inml)"""
 
 from importlib.resources import files as _files
 

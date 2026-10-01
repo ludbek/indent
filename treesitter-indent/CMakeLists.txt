@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.13)
 
 project(tree-sitter-indent
         VERSION "0.1.0"
-        DESCRIPTION "Tree-sitter grammar for Indent Markup Language (.inml) used by diagram-app"
+        DESCRIPTION "Tree-sitter grammar for Indent Markup Language (.inml)"
         HOMEPAGE_URL "https://github.com/tree-sitter/treesitter-indent"
         LANGUAGES C)
 

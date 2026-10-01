@@ -1,7 +1,6 @@
 # treesitter-indent
 
-Tree-sitter grammar for Indent Markup Language used by
-`diagram-app` (`.inml` files).
+Tree-sitter grammar for Indent Markup Language.
 
 ## Grammar shape
 
