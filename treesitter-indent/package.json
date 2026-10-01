@@ -1,6 +1,6 @@
 {
   "name": "treesitter-indent",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Tree-sitter grammar for Indent Markup Language (.inml) used by diagram-app",
   "repository": {
     "type": "git",

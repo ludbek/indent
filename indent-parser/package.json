@@ -1,6 +1,6 @@
 {
   "name": "indent-parser",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Parser for a generic, human-friendly, indentation-based tree markup language (XML-light), Indent Markup Language (.inml).",
   "license": "MIT",
   "repository": {
