@@ -1,5 +1,5 @@
 /**
- * @file Tree-sitter grammar for Indent Markup Language (.inml) used by diagram-app
+ * @file Tree-sitter grammar for Indent Markup Language (.inml)
  * @author Suren
  * @license MIT
  *
