@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.1](https://github.com/ludbek/indent/compare/vscode-indent-lang-v0.2.0...vscode-indent-lang-v0.2.1) (2026-10-01)
+
+
+### Bug Fixes
+
+* **release:** use staged publish script for vsce publish ([#16](https://github.com/ludbek/indent/issues/16)) ([5b5b06e](https://github.com/ludbek/indent/commit/5b5b06ec9b1d8b29a45d68184cc21881ffcd2c03))
+
 ## [0.2.0](https://github.com/ludbek/indent/compare/vscode-indent-lang-v0.1.0...vscode-indent-lang-v0.2.0) (2026-09-30)
 
 
