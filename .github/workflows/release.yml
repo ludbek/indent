@@ -94,11 +94,8 @@ jobs:
       - name: Build
         run: npm run build --workspaces --if-present
 
-      - name: Install vsce
-        run: npm install -g @vscode/vsce
-
       - name: Publish VS Code extension
         working-directory: vscode-indent-lang
-        run: vsce publish -p "$VSCE_PAT"
+        run: npm run publish:vsce
         env:
           VSCE_PAT: ${{ secrets.VSCE_PAT }}
