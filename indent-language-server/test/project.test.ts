@@ -278,4 +278,54 @@ describe("preloadProjectFiles", () => {
     expect(index.documents.has(aUri)).toBe(false);
     expect(index.preloadedUris.has(aUri)).toBe(false);
   });
+
+  it("does not let two files with the same unqualified node shape clobber each other's canonical paths", async () => {
+    // Regression test: two sibling files (`a.inml`, `b.inml`) each define a
+    // single top-level `service` with a single `layout-row` child and no
+    // disambiguating attribute, so both independently compute the exact
+    // same bare-kind canonical path (`/service/layout-row`). Before the
+    // fix, the global `nodesByPath` map let the second-processed file's
+    // node silently overwrite the first's entry at that path, so `b.inml`'s
+    // own same-file `event-handler` self-reference resolved to zero
+    // targets -- it is the bug reported against cp-aaspire-feed.inml.
+    tmpDir = mkdtempSync(join(tmpdir(), "indent-project-"));
+    writeFileSync(join(tmpDir, "project.inml"), `entry "./root.inml"\n`);
+    writeFileSync(
+      join(tmpDir, "root.inml"),
+      `!include "./a.inml"\n!include "./b.inml"\n`,
+    );
+    writeFileSync(
+      join(tmpDir, "a.inml"),
+      [
+        `service "svc-a"`,
+        `    layout-row`,
+        `        event-handler "HandlerA"`,
+      ].join("\n") + "\n",
+    );
+    writeFileSync(
+      join(tmpDir, "b.inml"),
+      [
+        `service "svc-b"`,
+        `    layout-row`,
+        `        event-handler "HandlerB"`,
+        `            >- //event-handler[.="HandlerB"]`,
+      ].join("\n") + "\n",
+    );
+
+    const index = await WorkspaceIndex.create();
+    index.refreshProjects([tmpDir]);
+    index.preloadProjectFiles();
+
+    const bUri = fsPathToUri(join(tmpDir, "b.inml"));
+    const ref = index.refReferences.find(
+      (r) => r.uri === bUri && r.rawRef === '//event-handler[.="HandlerB"]',
+    );
+    expect(ref?.resolvedTargetPaths.length).toBe(1);
+
+    const diagnostics = computeDiagnostics(bUri, index);
+    const unresolved = diagnostics.filter((d) =>
+      d.message.startsWith("Unresolved reference"),
+    );
+    expect(unresolved).toEqual([]);
+  });
 });
