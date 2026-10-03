@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.1](https://github.com/ludbek/indent/compare/indent-language-server-v0.2.0...indent-language-server-v0.2.1) (2026-10-03)
+
+
+### Bug Fixes
+
+* **indent-language-server:** dedupe canonical node paths across files ([#20](https://github.com/ludbek/indent/issues/20)) ([7b42411](https://github.com/ludbek/indent/commit/7b424119b2100d03bbe122ac399d20f82dee708d))
+
 ## [0.2.0](https://github.com/ludbek/indent/compare/indent-language-server-v0.1.0...indent-language-server-v0.2.0) (2026-09-30)
 
 

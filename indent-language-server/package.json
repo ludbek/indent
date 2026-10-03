@@ -1,6 +1,6 @@
 {
   "name": "indent-language-server",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Language Server Protocol implementation for Indent Markup Language",
   "license": "MIT",
   "repository": {
