@@ -3,7 +3,7 @@
   "private": true,
   "displayName": "Indent",
   "description": "Syntax highlighting for Indent Markup Language (.inml)",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "publisher": "SurenShrestha",
   "license": "MIT",
   "repository": {
@@ -79,7 +79,7 @@
   "dependencies": {},
   "devDependencies": {
     "esbuild": "^0.24.2",
-    "indent-language-server": "^0.2.0",
+    "indent-language-server": "^0.2.1",
     "vscode-languageclient": "^9.0.1",
     "vscode-oniguruma": "^2.0.1",
     "vscode-textmate": "^9.2.0"

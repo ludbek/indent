@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.1](https://github.com/ludbek/indent/compare/treesitter-indent-v0.2.0...treesitter-indent-v0.2.1) (2026-10-03)
+
+
+### Bug Fixes
+
+* clean up ([#18](https://github.com/ludbek/indent/issues/18)) ([ce61eb1](https://github.com/ludbek/indent/commit/ce61eb13d6d6a7cb6632f659dd4ad208048f43cd))
+
 ## [0.2.0](https://github.com/ludbek/indent/compare/treesitter-indent-v0.1.0...treesitter-indent-v0.2.0) (2026-09-30)
 
 
