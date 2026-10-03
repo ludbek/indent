@@ -1,4 +1,4 @@
-import { dirname, resolve, isAbsolute } from "path";
+import { dirname, resolve, isAbsolute, basename } from "path";
 import { existsSync, readFileSync } from "fs";
 import { URI } from "vscode-uri";
 import type { Range } from "vscode-languageserver";
@@ -220,6 +220,34 @@ export class WorkspaceIndex {
     kind: string,
     parentPath?: string,
   ): IndexedNode {
+    // Sibling disambiguation (`_disambiguateSiblings` / the bare-kind case in
+    // `buildChildren`) only ever looks at siblings within the SAME document,
+    // since `rebuildIndex` builds each doc's tree independently. Two separate
+    // files that happen to share the same shape at some scope (e.g. each has
+    // exactly one top-level `service` and one `layout-row`, so both compute
+    // the bare path `/service/layout-row`) would otherwise collide in the
+    // single workspace-wide `nodesByPath` map: the later document silently
+    // overwrites the earlier one's entry, so any `childPaths` lookup that
+    // resolves through `nodesByPath` (see `xpathTree.ts`) can end up walking
+    // into the wrong file's subtree, breaking `//kind[.="value"]` lookups for
+    // perfectly valid same-file references. Detect that cross-document
+    // collision here and disambiguate by source file, keeping canonical
+    // paths unique workspace-wide without touching the common,
+    // non-colliding case.
+    let finalPath = canonicalPath;
+    const existing = this.nodesByPath.get(finalPath);
+    if (existing && existing.uri !== uri) {
+      const fileTag = basename(uriToFsPath(uri));
+      finalPath = `${canonicalPath}{file="${fileTag}"}`;
+      const stillColliding = this.nodesByPath.get(finalPath);
+      if (stillColliding && stillColliding.uri !== uri) {
+        // Extremely rare: even the file-tagged path collides (e.g. two
+        // documents sharing the same basename). Fall back to the statement
+        // id, which is always unique, to guarantee no silent overwrite.
+        finalPath = `${canonicalPath}{file="${fileTag}",id="${stmt.id}"}`;
+      }
+    }
+
     const label =
       stmt.value !== undefined
         ? String(stmt.value.value)
@@ -229,7 +257,7 @@ export class WorkspaceIndex {
     const indexed: IndexedNode = {
       id: stmt.id,
       uri,
-      canonicalPath,
+      canonicalPath: finalPath,
       label,
       kind,
       value: stmt.value,
@@ -238,12 +266,12 @@ export class WorkspaceIndex {
       childPaths: [],
       statement: stmt,
     };
-    this.nodesByPath.set(canonicalPath, indexed);
+    this.nodesByPath.set(finalPath, indexed);
     this.nodesById.set(stmt.id, indexed);
     // Wire up parent's childPaths
     if (parentPath) {
       const parent = this.nodesByPath.get(parentPath);
-      if (parent) parent.childPaths.push(canonicalPath);
+      if (parent) parent.childPaths.push(finalPath);
     }
     return indexed;
   }
@@ -336,16 +364,16 @@ export class WorkspaceIndex {
             const stmt = siblings[0];
             const segment = kind;
             const currentPath = parentPath ? `${parentPath}/${segment}` : `/${segment}`;
-            this._registerNode(stmt, doc.uri, currentPath, kind, parentPath);
-            buildChildren(stmt.children, currentPath);
+            const node = this._registerNode(stmt, doc.uri, currentPath, kind, parentPath);
+            buildChildren(stmt.children, node.canonicalPath);
           } else {
             // Multiple siblings share the same kind — find a disambiguating attribute
             const disambiguatedPaths = this._disambiguateSiblings(siblings, kind, parentPath);
             for (let i = 0; i < siblings.length; i++) {
               const stmt = siblings[i];
               const currentPath = disambiguatedPaths[i];
-              this._registerNode(stmt, doc.uri, currentPath, kind, parentPath);
-              buildChildren(stmt.children, currentPath);
+              const node = this._registerNode(stmt, doc.uri, currentPath, kind, parentPath);
+              buildChildren(stmt.children, node.canonicalPath);
             }
           }
         }
