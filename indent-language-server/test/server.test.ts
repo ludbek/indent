@@ -4,7 +4,6 @@ import { join } from "node:path";
 import { describe, it, expect, afterEach, vi } from "vitest";
 import { createIndentLanguageServer } from "../src/server.js";
 import { fsPathToUri } from "../src/indexer.js";
-import { computeDiagnostics } from "../src/diagnostics.js";
 
 /**
  * Minimal stub satisfying only the `_Connection` members `createIndentLanguageServer`
@@ -53,9 +52,8 @@ describe("onDidChangeWatchedFiles", () => {
     if (tmpDir) rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  it("refreshes the project graph and re-publishes diagnostics for open documents on any watched .inml change", async () => {
+  it("re-indexes newly created .inml files on any watched file change, so refs into them resolve", async () => {
     tmpDir = mkdtempSync(join(tmpdir(), "indent-server-"));
-    writeFileSync(join(tmpDir, "project.inml"), `entry "./root.inml"\n`);
     writeFileSync(join(tmpDir, "root.inml"), `org name="Acme"\n`);
 
     const { stub, handlers, sentDiagnostics } = createStubConnection();
@@ -64,27 +62,28 @@ describe("onDidChangeWatchedFiles", () => {
     // Simulate server init against the temp workspace root.
     handlers.onInitialize({ workspaceFolders: [{ uri: fsPathToUri(tmpDir), name: "root" }] });
 
-    // A new file, not yet on disk at init time, gets included by root.inml
-    // and opened in the editor -- exactly the reported bug scenario.
-    writeFileSync(join(tmpDir, "extra.inml"), `team name="Extra"\n`);
-    writeFileSync(join(tmpDir, "root.inml"), `!include "./extra.inml"\norg name="Acme"\n`);
+    // A new file, not yet on disk at init time, gets opened in the editor
+    // with a ref pointing at a node defined in another file that's never
+    // opened in the editor.
+    writeFileSync(join(tmpDir, "extra.inml"), `team name="Extra"\n    alias /org\n`);
 
     const extraUri = fsPathToUri(join(tmpDir, "extra.inml"));
-    index.setDocument(extraUri, `team name="Extra"\n`);
+    index.setDocument(extraUri, `team name="Extra"\n    alias /org\n`);
 
-    // Before any refresh, the LS's cached project graph is stale (still
-    // pre-dates extra.inml's include), so it wrongly reports "not reachable".
-    let diags = computeDiagnostics(extraUri, index);
-    expect(diags.some((d: any) => d.message.includes("not reachable"))).toBe(true);
+    // Before any refresh, root.inml (never opened in the editor) was already
+    // preloaded at init, so the ref should resolve immediately -- but to
+    // exercise the watcher path, create yet another file on disk after init
+    // and confirm a watched-file event picks it up.
+    writeFileSync(join(tmpDir, "another.inml"), `service name="Svc"\n`);
 
     sentDiagnostics.length = 0;
 
     // The client's file watcher (configured in vscode-indent-lang's extension.js
-    // against **/*.inml) notifies the server of the on-disk root.inml edit.
+    // against **/*.inml) notifies the server of the on-disk change.
     handlers.onDidChangeWatchedFiles({ changes: [] });
 
-    diags = computeDiagnostics(extraUri, index);
-    expect(diags.some((d: any) => d.message.includes("not reachable"))).toBe(false);
+    const anotherUri = fsPathToUri(join(tmpDir, "another.inml"));
+    expect(index.documents.has(anotherUri)).toBe(true);
 
     // Diagnostics for every open document must be re-published, not just
     // the file that triggered the watcher event.

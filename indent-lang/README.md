@@ -11,7 +11,7 @@ Three subpath exports:
 
 | Import | Contents |
 | --- | --- |
-| `indent-lang` | Parser, include resolver, project manifest, wire format. |
+| `indent-lang` | Parser, include resolver, wire format. |
 | `indent-lang/xpath` | XPath-like selector over tree-shaped data. |
 | `indent-lang/schema` | Schema definition parsing, validation, discovery. |
 
@@ -272,15 +272,7 @@ violations (under `minCount`, over `maxCount`).
 
 ### Binding a document to a schema
 
-A document finds its schema by this precedence:
-
-| # | Mechanism | Wins over |
-| --- | --- | --- |
-| 1 | `!schema "<path>"` directive in the document | everything |
-| 2 | Filename segment `doc.<name>.inml` looked up in the project registry | — |
-| 3 | No schema — the document is not validated | — |
-
-#### 1. The `!schema` directive
+A document finds its schema via an in-document `!schema "<path>"` directive:
 
 ```
 !schema "./schemas/c4.schema.inml"
@@ -301,36 +293,15 @@ Constraints:
   `ParseResult.schemaRef` (set by `parseFile`/`parseFileWithSources`; plain
   `parse()` does not read from disk and so never sets it).
 
-This exists for standalone files with no surrounding project — a CI config
-file, a one-off diagram — and lets tooling know a single opened file's schema
-without indexing a workspace.
-
-#### 2. The `project.inml` schema registry
-
-```
-entry "./src/main.inml"
-
-schemas
-    schema "architecture" src="./schemas/c4.schema.inml"
-    schema "config" src="./schemas/config.schema.inml"
-```
-
-`src` paths resolve relative to the manifest directory. Names must be unique.
-The registry is exposed as `ProjectManifest.schemas: Map<string, string>`
-(name → absolute path).
-
-A document named `diagram.architecture.inml` has schema segment
-`architecture`, which is looked up in this registry. There is no
-sibling-directory or walk-up lookup — registration is explicit and reviewable
-in one place.
+If no `!schema` directive is present, the document is not validated.
 
 `.schema.inml` is a **reserved suffix**: such a file is always a schema
-definition, never a document, and never has a schema segment of its own.
+definition, never a document.
 
 ```ts
 import { resolveSchemaFor } from "indent-lang/schema";
 
-const schemaPath = resolveSchemaFor(filePath, parseResult, manifest);
+const schemaPath = resolveSchemaFor(parseResult);
 // string | undefined
 ```
 
@@ -341,15 +312,13 @@ const schemaPath = resolveSchemaFor(filePath, parseResult, manifest);
 ```
 indent-lang <path> [options]
 
-  --project          treat <path> as a project.inml manifest
-  --file             treat <path> as a single .inml entry file
   -o, --output <p>   write JSON output to a file instead of stdout
   --schema <path>    validate against this schema, overriding discovery
 ```
 
-Without `--schema`, the schema is auto-discovered using the precedence above.
-Schema diagnostics go to stderr; JSON output is still written. The process
-exits non-zero if any diagnostic has `error` severity.
+Without `--schema`, the schema is auto-discovered from the document's
+`!schema` directive. Schema diagnostics go to stderr; JSON output is still
+written. The process exits non-zero if any diagnostic has `error` severity.
 
 ---
 
@@ -357,21 +326,11 @@ exits non-zero if any diagnostic has `error` severity.
 
 **Remote schemas.** Schemas are local files only. `parse()` is synchronous
 and must never perform network I/O, so fetching a schema over HTTP cannot be
-folded into parsing. The intended future shape:
-
-- The `project.inml` registry gains remote `src` URLs, keeping the
-  indirection in one reviewable place.
-- An explicit `indent-lang schema fetch` CLI subcommand downloads them.
-- Downloads are cached in a `.indent/schemas/` directory.
-- A lockfile records integrity hashes so builds are reproducible and
-  schema drift is detectable.
-
-Parsing and validation stay offline against the cache; the network step is
-always explicit and separate.
+folded into parsing. Any future remote-schema support would need an explicit
+fetch step with a local cache, kept entirely separate from parsing.
 
 **Language server integration.** `indent-language-server` does not yet
-consume schemas for diagnostics or completions. The `!schema` directive and
-the project registry exist to enable it.
+consume schemas for diagnostics or completions.
 
 **Line-anchored diagnostics.** Requires either threading source positions
 through the tree builder or validating against the language server's CST.

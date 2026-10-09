@@ -4,9 +4,6 @@ import {
   type Range,
 } from "vscode-languageserver";
 import type { WorkspaceIndex } from "./indexer.js";
-import { uriToFsPath } from "./indexer.js";
-import { PROJECT_FILENAME } from "indent-lang";
-import { basename } from "node:path";
 
 export function computeDiagnostics(
   uri: string,
@@ -89,25 +86,6 @@ export function computeDiagnostics(
       diagnostics.push({
         range: ref.range,
         message: `Unresolved reference '${ref.rawRef}' (${location})`,
-        severity: DiagnosticSeverity.Warning,
-        source: "indent",
-      });
-    }
-  }
-
-  // 5. Orphan file: a .inml document not reachable from its nearest
-  // ancestor project.inml's entry (and not a project.inml manifest itself).
-  // Uses nearest-ancestor project lookup so files in unrelated project
-  // subtrees of a monorepo aren't flagged against the wrong project. Files
-  // with no project.inml anywhere up their directory chain are treated as
-  // standalone (parseFile semantics) and never warned about.
-  const fsPath = uriToFsPath(uri);
-  if (fsPath.endsWith(".inml") && basename(fsPath) !== PROJECT_FILENAME) {
-    const project = index.findProjectForFile(fsPath);
-    if (project && !project.includedFiles.has(fsPath)) {
-      diagnostics.push({
-        range: { start: { line: 0, character: 0 }, end: { line: 0, character: 0 } },
-        message: `This file is not reachable from the '${PROJECT_FILENAME}' entry at '${project.projectFsPath}' and will be ignored.`,
         severity: DiagnosticSeverity.Warning,
         source: "indent",
       });

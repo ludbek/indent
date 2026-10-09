@@ -21,8 +21,6 @@ import { formatDocument, formatOnType } from "./formatting.js";
 import { prepareRename, renameSymbol } from "./rename.js";
 import { getSearchableNodes } from "./nodeSearch.js";
 import { uriToFsPath } from "./indexer.js";
-import { PROJECT_FILENAME } from "indent-lang";
-import { basename } from "node:path";
 
 export async function createIndentLanguageServer(customConnection?: _Connection) {
   const connection =
@@ -42,8 +40,7 @@ export async function createIndentLanguageServer(customConnection?: _Connection)
       roots.push(params.rootPath);
     }
 
-    index.refreshProjects(roots);
-    index.preloadProjectFiles();
+    index.setWorkspaceRoots(roots);
 
     return {
       capabilities: {
@@ -84,43 +81,25 @@ export async function createIndentLanguageServer(customConnection?: _Connection)
       change.document.version
     );
 
-    const isProjectManifest = basename(uriToFsPath(change.document.uri)) === PROJECT_FILENAME;
-    if (isProjectManifest) {
-      // A project.inml's entry/include graph affects reachability for
-      // every other file, so recompute projects and re-publish
-      // diagnostics for everything currently open.
-      index.refreshProjects();
-      index.preloadProjectFiles();
-      updateDiagnosticsForAllOpenDocuments();
-    } else {
-      updateDiagnostics(change.document.uri);
-    }
+    updateDiagnostics(change.document.uri);
   });
 
   documents.onDidClose((e) => {
-    // If this file is still reachable from a project's entry, keep it
-    // indexed (just stop treating it as an open editor buffer) so refs
-    // from other open documents into it keep resolving after the tab
-    // closes -- only fully drop it from the index when it's genuinely
-    // outside every project's include graph.
-    if (index.reachableFiles.has(uriToFsPath(e.document.uri))) {
-      index.preloadedUris.add(e.document.uri);
-    } else {
-      index.removeDocument(e.document.uri);
-    }
+    // Keep the file indexed (just stop treating it as an open editor
+    // buffer) so refs from other open documents into it keep resolving
+    // after the tab closes -- it stays part of its discovered project
+    // regardless of editor state.
+    index.preloadedUris.add(e.document.uri);
     connection.sendDiagnostics({ uri: e.document.uri, diagnostics: [] });
   });
 
   // The client (vscode-indent-lang) watches **/*.inml and forwards changes here
   // even for files that are never opened in an editor (e.g. created/edited
-  // externally, or via git checkout/branch switch). Any such change can add,
-  // remove, or rewire `!include` edges anywhere in a project's graph, so the
-  // reachability set must be recomputed and every open document's
-  // diagnostics re-published -- otherwise stale "not reachable" warnings
-  // (or missed ones) can linger until project.inml itself happens to change.
+  // externally, or via git checkout/branch switch). Any such change can add
+  // or remove a file from a known project, so every discovered project root
+  // is resynced and every open document's diagnostics re-published.
   connection.onDidChangeWatchedFiles(() => {
-    index.refreshProjects();
-    index.preloadProjectFiles();
+    index.rescanKnownProjects();
     updateDiagnosticsForAllOpenDocuments();
   });
 
