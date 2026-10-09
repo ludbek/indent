@@ -1,11 +1,11 @@
-import { dirname, resolve, isAbsolute, basename } from "path";
+import { dirname, resolve, isAbsolute, basename, sep } from "path";
 import { existsSync, readFileSync } from "fs";
 import { URI } from "vscode-uri";
 import type { Range } from "vscode-languageserver";
 import { CstParser } from "./cst.js";
 import { parseXPath, selectNodes } from "indent-lang/xpath";
 import { buildXPathForest } from "./xpathTree.js";
-import { findAllInmlFiles } from "./project.js";
+import { findAllInmlFiles, findProjectRoot } from "./project.js";
 import type {
   AstDocument,
   AstStatement,
@@ -46,9 +46,16 @@ export class WorkspaceIndex {
   public includeLinks: IncludeLink[] = [];
   public workspaceRoots: string[] = [];
   /**
-   * URIs of documents loaded from disk by `preloadWorkspaceFiles` rather
-   * than opened/edited in the editor. Tracked separately so a later
-   * `preloadWorkspaceFiles` call can safely evict them if the file falls
+   * Discovered project roots (see `findProjectRoot`) mapped to the set of
+   * `.inml` fsPaths found under each, as of the last scan. Scoped-per-root
+   * so a watched-file change can resync each known project independently
+   * instead of re-walking the whole workspace.
+   */
+  public projectRoots: Map<string, Set<string>> = new Map();
+  /**
+   * URIs of documents loaded from disk by `ensureProjectIndexed`/
+   * `rescanKnownProjects` rather than opened/edited in the editor. Tracked
+   * separately so a later rescan can safely evict them if the file falls
    * out of the discovered set (e.g. it was deleted), without ever evicting
    * a document the user genuinely has open.
    */
@@ -63,34 +70,25 @@ export class WorkspaceIndex {
   }
 
   /**
-   * Remembers `roots` for later use (e.g. `preloadWorkspaceFiles`). Call
-   * once at server init with the LSP workspace folders.
+   * Remembers `roots` for later use as the upper bound `findProjectRoot`'s
+   * upward walk won't cross. Call once at server init with the LSP
+   * workspace folders.
    */
   public setWorkspaceRoots(roots: string[] = this.workspaceRoots) {
     this.workspaceRoots = roots;
   }
 
   /**
-   * Reads and indexes every `.inml` file under `workspaceRoots` that isn't
-   * already in `documents`, so xpath/ref resolution (`rebuildIndex`'s
-   * ref-forest) sees every document in the workspace, not just whichever
-   * ones happen to be open in the editor. Without this, a ref in an open
-   * file pointing at a node defined in a never-opened file would falsely
-   * resolve to zero targets, since that file's nodes never made it into
-   * `rootNodes`/the xpath forest.
-   *
-   * Files already open (or previously edited) are left untouched -- only
-   * gaps in `documents` get filled from disk. Previously preloaded files
-   * that have since been deleted are evicted, since stale nodes there could
-   * cause a since-removed reference to spuriously keep resolving.
+   * Reads and indexes every `.inml` file discovered under `root` that isn't
+   * already in `documents`, and evicts any previously-preloaded file under
+   * `root` that's no longer discovered (e.g. deleted). Returns whether
+   * `documents` changed, so callers can decide whether to rebuild the index.
    */
-  public preloadWorkspaceFiles() {
+  private _syncRoot(root: string): boolean {
     let changed = false;
 
-    const discovered = new Set<string>();
-    for (const root of this.workspaceRoots) {
-      for (const fsPath of findAllInmlFiles(root)) discovered.add(fsPath);
-    }
+    const discovered = new Set(findAllInmlFiles(root));
+    this.projectRoots.set(root, discovered);
 
     for (const fsPath of discovered) {
       const uri = fsPathToUri(fsPath);
@@ -107,24 +105,69 @@ export class WorkspaceIndex {
       }
     }
 
+    const rootPrefix = root.endsWith(sep) ? root : root + sep;
     for (const uri of [...this.preloadedUris]) {
-      if (!discovered.has(uriToFsPath(uri))) {
+      const fsPath = uriToFsPath(uri);
+      if (fsPath !== root && !fsPath.startsWith(rootPrefix)) continue;
+      if (!discovered.has(fsPath)) {
         this.documents.delete(uri);
         this.preloadedUris.delete(uri);
         changed = true;
       }
     }
 
+    return changed;
+  }
+
+  /**
+   * Determines the project a newly-opened file belongs to (see
+   * `findProjectRoot`) and indexes every `.inml` file under that root, so
+   * xpath/ref resolution sees the full set of documents in that project,
+   * not just whichever ones happen to be open in the editor. Without this,
+   * a ref in an open file pointing at a node defined in a never-opened
+   * sibling file would falsely resolve to zero targets.
+   *
+   * Idempotent / cheap to call repeatedly for files already belonging to a
+   * known root -- it re-syncs that root each time, so it also serves as a
+   * manual refresh if called again for the same root.
+   */
+  public ensureProjectIndexed(fsPath: string) {
+    const root = findProjectRoot(fsPath, this.workspaceRoots);
+    // Never walk the filesystem root itself -- it's never a legitimate
+    // project root in practice (`findProjectRoot`'s no-marker/no-boundary
+    // fallback only lands here for a file that is itself directly inside
+    // the fs root), and recursing from "/" would walk the entire disk.
+    if (resolve(root) === resolve("/")) return;
+    if (this._syncRoot(root)) this.rebuildIndex();
+  }
+
+  /**
+   * Re-syncs every previously-discovered project root. Used when the
+   * client's file watcher reports a change -- cheaper than re-walking the
+   * whole workspace, since it's bounded by the number of distinct projects
+   * opened so far rather than the workspace's total size.
+   */
+  public rescanKnownProjects() {
+    let changed = false;
+    for (const root of this.projectRoots.keys()) {
+      if (this._syncRoot(root)) changed = true;
+    }
     if (changed) this.rebuildIndex();
   }
 
   public setDocument(uri: string, text: string, version: number = 1): AstDocument {
+    const isNewDocument = !this.documents.has(uri);
     const { doc } = this.parser.parse(uri, text, version);
     this.documents.set(uri, doc);
     // The editor now genuinely has this document open/edited -- it's no
-    // longer merely a disk-preloaded stand-in, so `preloadWorkspaceFiles`
-    // must never evict it just because it's no longer (re)discovered.
+    // longer merely a disk-preloaded stand-in, so a project rescan must
+    // never evict it just because it's no longer (re)discovered.
     this.preloadedUris.delete(uri);
+    if (isNewDocument) {
+      // First time we've seen this uri -- discover and index its project
+      // so refs into never-opened sibling files resolve immediately.
+      this.ensureProjectIndexed(uriToFsPath(uri));
+    }
     this.rebuildIndex();
     return doc;
   }
