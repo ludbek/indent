@@ -16,8 +16,7 @@ jobs:
       issues: write
     outputs:
       releases_created: ${{ steps.release.outputs.releases_created }}
-      indent-parser--release_created: ${{ steps.release.outputs['indent-parser--release_created'] }}
-      indent-xpath--release_created: ${{ steps.release.outputs['indent-xpath--release_created'] }}
+      indent-lang--release_created: ${{ steps.release.outputs['indent-lang--release_created'] }}
       treesitter-indent--release_created: ${{ steps.release.outputs['treesitter-indent--release_created'] }}
       indent-language-server--release_created: ${{ steps.release.outputs['indent-language-server--release_created'] }}
       vscode-indent-lang--release_created: ${{ steps.release.outputs['vscode-indent-lang--release_created'] }}
@@ -36,8 +35,7 @@ jobs:
     strategy:
       matrix:
         package:
-          - indent-parser
-          - indent-xpath
+          - indent-lang
           - treesitter-indent
           - indent-language-server
     steps:

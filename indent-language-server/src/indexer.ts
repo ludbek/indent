@@ -3,7 +3,7 @@ import { existsSync, readFileSync } from "fs";
 import { URI } from "vscode-uri";
 import type { Range } from "vscode-languageserver";
 import { CstParser } from "./cst.js";
-import { parseXPath, selectNodes } from "indent-xpath";
+import { parseXPath, selectNodes } from "indent-lang/xpath";
 import { buildXPathForest } from "./xpathTree.js";
 import {
   discoverProjects,
@@ -394,7 +394,7 @@ export class WorkspaceIndex {
 
     // The CST classifies any non-number/boolean unquoted value as "ref"
     // type, including incomplete text a user is still typing (e.g. "/org/"
-    // or "//"). indent-xpath's parseXPath is strict and throws on such
+    // or "//"). indent-lang's xpath module's parseXPath is strict and throws on such
     // incomplete/invalid input -- treat that as simply "unresolved" (empty
     // target list) rather than crashing the whole index rebuild, so live
     // editing stays resilient.

@@ -1,6 +1,6 @@
 import { readdirSync, statSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
-import { parseProject, PROJECT_FILENAME } from "indent-parser";
+import { parseProject, PROJECT_FILENAME } from "indent-lang";
 
 const SKIP_DIRS = new Set(["node_modules", ".git", "dist", "build", ".vscode"]);
 
@@ -52,7 +52,7 @@ export interface DiscoveredProject {
 
 /**
  * Discovers every `project.inml` under `roots` and resolves each one's
- * include graph via `indent-parser`'s `parseProject`. A project.inml that
+ * include graph via `indent-lang`'s `parseProject`. A project.inml that
  * fails to parse (missing/invalid `entry`, broken include, etc.) is skipped
  * rather than thrown -- a broken manifest must not crash the language
  * server or block diagnostics for unrelated files.

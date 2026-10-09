@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll } from "vitest";
-import { parseXPath, selectNodes } from "indent-xpath";
+import { parseXPath, selectNodes } from "indent-lang/xpath";
 import { WorkspaceIndex } from "../src/indexer.js";
 import { buildXPathForest } from "../src/xpathTree.js";
 

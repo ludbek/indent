@@ -18,7 +18,7 @@
       "name": "comment.line.semicolon.indent"
     },
     "statement-with-continuation": {
-      "comment": "A statement whose first line ends in a trailing '\\' (see indent-parser/src/tokenizer.ts): the block spans every physically-continued line, applying the normal attribute/string/etc. patterns to each, until a line is reached that does not itself end in '\\'. Must come before #statement-keyword so a plain single-line statement isn't matched first. `end` is zero-width, anchored at the START of a line via lookahead rather than at true end-of-line via lookbehind: a lookbehind-anchored `(?<!\\\\)$` end pattern triggers a vscode-textmate/oniguruma engine quirk where inner `patterns` silently stop being applied on subsequent lines -- this lookahead form does not.",
+      "comment": "A statement whose first line ends in a trailing '\\' (see indent-lang/src/tokenizer.ts): the block spans every physically-continued line, applying the normal attribute/string/etc. patterns to each, until a line is reached that does not itself end in '\\'. Must come before #statement-keyword so a plain single-line statement isn't matched first. `end` is zero-width, anchored at the START of a line via lookahead rather than at true end-of-line via lookbehind: a lookbehind-anchored `(?<!\\\\)$` end pattern triggers a vscode-textmate/oniguruma engine quirk where inner `patterns` silently stop being applied on subsequent lines -- this lookahead form does not.",
       "begin": "^\\s*(?!;)(\\S+)(?=.*\\\\$)",
       "beginCaptures": {
         "1": { "name": "keyword.control.indent" }
@@ -34,7 +34,7 @@
       ]
     },
     "line-continuation": {
-      "comment": "A trailing '\\' joins this line with the next physical line (see indent-parser/src/tokenizer.ts). TextMate can't actually join lines, so this just gives the marker itself a visible color instead of leaving it unclassified.",
+      "comment": "A trailing '\\' joins this line with the next physical line (see indent-lang/src/tokenizer.ts). TextMate can't actually join lines, so this just gives the marker itself a visible color instead of leaving it unclassified.",
       "match": "\\\\\\s*$",
       "name": "constant.character.escape.indent"
     },

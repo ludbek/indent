@@ -19,7 +19,7 @@ export interface NodeSearchItem {
    * labeled nodes (e.g. two `service` nodes both named "Auth") remain
    * distinguishable in the picker. See `formatNodeSource`. */
   detail: string;
-  /** The `indent-xpath` ref string to insert at the cursor on selection. */
+  /** The `indent-lang`'s xpath module ref string to insert at the cursor on selection. */
   ref: string;
 }
 

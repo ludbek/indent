@@ -5,7 +5,7 @@
 // .inml file open so you can manually smoke-test the extension end-to-end.
 //
 // Usage: node scripts/test-local.js [path/to/file.inml]
-//   (defaults to indent-parser/test/fixtures/sample.inml if no path given)
+//   (defaults to indent-lang/test/fixtures/sample.inml if no path given)
 
 const { execFileSync } = require("node:child_process");
 const path = require("node:path");
@@ -18,7 +18,7 @@ const vsixPath = path.join(vscodeExtDir, "vscode-indent-lang.vsix");
 
 const sampleFile =
   process.argv[2] ||
-  path.join(repoRoot, "indent-parser", "test", "fixtures", "sample.inml");
+  path.join(repoRoot, "indent-lang", "test", "fixtures", "sample.inml");
 
 function run(cmd, args, cwd) {
   console.log(`\n$ ${cmd} ${args.join(" ")}`);

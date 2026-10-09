@@ -18,6 +18,14 @@ export interface ProjectManifest {
   name?: string;
   /** Absolute path of the entry `.inml` file, resolved relative to the manifest's directory. */
   entryPath: string;
+  /**
+   * Optional schema registry, from a top-level `schemas` node containing
+   * `schema "<name>" src="<path>"` children. Maps a schema name (matched
+   * against the `<name>` segment of a `doc.<name>.inml` filename) to the
+   * absolute path of its `.schema.inml` definition file, resolved relative
+   * to the manifest's directory. Empty map when no `schemas` node is present.
+   */
+  schemas: Map<string, string>;
 }
 
 /**
@@ -80,7 +88,70 @@ export function parseProjectFile(projectPath: string): ProjectManifest {
 
   const entryPath = resolve(dirname(resolvedProjectPath), entryNode.value);
 
-  return { name, entryPath };
+  const schemas = parseSchemasRegistry(parsed.roots, resolvedProjectPath);
+
+  return { name, entryPath, schemas };
+}
+
+/**
+ * Parses an optional top-level `schemas` node containing `schema "<name>"
+ * src="<path>"` children. At most one `schemas` node is allowed; `src=`
+ * paths are resolved relative to the manifest's own directory. Rejects
+ * duplicate schema names, missing/non-string `src=`, and non-string schema
+ * names.
+ */
+function parseSchemasRegistry(
+  roots: ParseResult["roots"],
+  resolvedProjectPath: string,
+): Map<string, string> {
+  const schemas = new Map<string, string>();
+  const schemasNodes = roots.filter((n) => n.kind === "schemas");
+  if (schemasNodes.length === 0) {
+    return schemas;
+  }
+  if (schemasNodes.length > 1) {
+    throw new IndentParseError(
+      `'${PROJECT_FILENAME}' must declare at most one 'schemas' node, found ${schemasNodes.length}`,
+      0,
+      resolvedProjectPath,
+    );
+  }
+
+  const manifestDir = dirname(resolvedProjectPath);
+  for (const child of schemasNodes[0].children) {
+    if (child.kind !== "schema") {
+      throw new IndentParseError(
+        `'schemas' may only contain 'schema' entries, found '${child.kind}'`,
+        0,
+        resolvedProjectPath,
+      );
+    }
+    if (typeof child.value !== "string") {
+      throw new IndentParseError(
+        `'schema' requires a quoted string name, e.g. 'schema "architecture" src="./schemas/c4.schema.inml"'`,
+        0,
+        resolvedProjectPath,
+      );
+    }
+    if (schemas.has(child.value)) {
+      throw new IndentParseError(
+        `duplicate schema name '${child.value}' in 'schemas' registry`,
+        0,
+        resolvedProjectPath,
+      );
+    }
+    const src = child.attrs.src;
+    if (typeof src !== "string") {
+      throw new IndentParseError(
+        `'schema "${child.value}"' requires a 'src' attribute, e.g. 'src="./schemas/c4.schema.inml"'`,
+        0,
+        resolvedProjectPath,
+      );
+    }
+    schemas.set(child.value, resolve(manifestDir, src));
+  }
+
+  return schemas;
 }
 
 function readSource(path: string): string {

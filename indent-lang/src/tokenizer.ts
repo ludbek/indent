@@ -398,7 +398,7 @@ const REF_SEPARATOR = "(?://|/)";
  * descendant (`//`) prefix, then separator-joined steps. Only absolute and
  * descendant paths are supported -- no bare relative paths, `..`, `.`,
  * standalone `@name`, wildcard `*`, or `name=value` shorthand (matches the
- * subset implemented by the `indent-xpath` package).
+ * subset implemented by the `indent-lang`'s xpath module package).
  */
 const XPATH_PATTERN = new RegExp(`^${REF_SEPARATOR}${REF_STEP}(?:${REF_SEPARATOR}${REF_STEP})*$`);
 

@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { selectNodes } from "../src/evaluate.js";
-import type { XPathNode } from "../src/types.js";
+import { selectNodes } from "../../src/xpath/evaluate.js";
+import type { XPathNode } from "../../src/xpath/types.js";
 
 /**
  * Builds a small fixture tree, hand-written as plain object literals
- * satisfying `XPathNode` -- deliberately not using `indent-parser` so this
+ * satisfying `XPathNode` -- deliberately not using `indent-lang` so this
  * package stays fully decoupled, even in tests.
  *
  *   org (name="Acme")

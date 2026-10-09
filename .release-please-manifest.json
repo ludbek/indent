@@ -1,6 +1,5 @@
 {
-  "indent-parser": "0.2.0",
-  "indent-xpath": "0.2.0",
+  "indent-lang": "0.2.0",
   "treesitter-indent": "0.2.1",
   "indent-language-server": "0.2.1",
   "vscode-indent-lang": "0.2.2"

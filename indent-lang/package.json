@@ -1,12 +1,12 @@
 {
-  "name": "indent-parser",
+  "name": "indent-lang",
   "version": "0.2.0",
-  "description": "Parser for a generic, human-friendly, indentation-based tree markup language (XML-light), Indent Markup Language (.inml).",
+  "description": "Indent Markup Language (.inml): parser, XPath-like node selector, and schema validation for a generic, human-friendly, indentation-based tree markup language (XML-light).",
   "license": "MIT",
   "repository": {
     "type": "git",
     "url": "https://github.com/ludbek/indent.git",
-    "directory": "indent-parser"
+    "directory": "indent-lang"
   },
   "author": {
     "name": "Suren Shrestha"
@@ -16,13 +16,23 @@
   "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "bin": {
-    "indent-parser": "./bin/indent-parser.js"
+    "indent-lang": "./bin/indent-lang.js"
   },
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "require": "./dist/index.cjs"
+    },
+    "./xpath": {
+      "types": "./dist/xpath/index.d.ts",
+      "import": "./dist/xpath/index.js",
+      "require": "./dist/xpath/index.cjs"
+    },
+    "./schema": {
+      "types": "./dist/schema/index.d.ts",
+      "import": "./dist/schema/index.js",
+      "require": "./dist/schema/index.cjs"
     }
   },
   "files": [

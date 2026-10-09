@@ -20,7 +20,7 @@ export interface RefFrequencyMaps {
 function makeKindValueKey(kind: string, value: string | number | boolean): string {
   // Include `typeof value` in the key so that a quoted string "42" and an
   // unquoted number 42 are never conflated -- mirrors the strict
-  // typeof+=== equality semantics `indent-xpath`'s `matchesLiteral` uses
+  // typeof+=== equality semantics `indent-lang`'s xpath module's `matchesLiteral` uses
   // when resolving `[.=value]` self-value predicates.
   return `${kind.toLowerCase()}\u0000${typeof value}\u0000${String(value)}`;
 }
@@ -44,7 +44,7 @@ export function computeRefFrequencyMaps(index: WorkspaceIndex): RefFrequencyMaps
 }
 
 /**
- * Serializes a literal value using the same grammar `indent-xpath`'s
+ * Serializes a literal value using the same grammar `indent-lang`'s xpath module's
  * `parseLiteral` accepts: quoted + `\`-escaped for strings, bare for
  * numbers/booleans.
  */
@@ -58,7 +58,7 @@ function serializeLiteral(value: string | number | boolean): string {
 /** Returns this node's siblings (same parent, all kinds), in the same
  * relative order the indexer registered them in -- i.e. `parent.childPaths`
  * order for non-root nodes, or `index.rootNodes` order for root-level
- * nodes. This is the exact ordering `indent-xpath`'s evaluator will
+ * nodes. This is the exact ordering `indent-lang`'s xpath module's evaluator will
  * independently reproduce when resolving a `kind[N]` child-axis index
  * predicate back to a node, so re-deriving positions from it guarantees
  * round-trip correctness. */
@@ -74,7 +74,7 @@ function getSiblings(node: IndexedNode, index: WorkspaceIndex): IndexedNode[] {
 }
 
 /** 0-based position of `node` among its same-kind (case-insensitive)
- * siblings, matching the `[N]` index-predicate semantics `indent-xpath`
+ * siblings, matching the `[N]` index-predicate semantics `indent-lang`'s xpath module
  * resolves for the child axis. */
 function indexAmongSameKindSiblings(node: IndexedNode, index: WorkspaceIndex): number {
   const siblings = getSiblings(node, index);
@@ -88,7 +88,7 @@ function indexAmongSameKindSiblings(node: IndexedNode, index: WorkspaceIndex): n
  * same-kind siblings) at EVERY level -- never mixing in attribute-based
  * disambiguation the way `IndexedNode.canonicalPath` does. This guarantees
  * the resulting ref is unambiguous regardless of sibling attribute
- * collisions, and round-trips correctly through `indent-xpath`'s
+ * collisions, and round-trips correctly through `indent-lang`'s xpath module's
  * `parseXPath`/`selectNodes`.
  */
 function buildIndexedPath(node: IndexedNode, index: WorkspaceIndex): string {
@@ -103,7 +103,7 @@ function buildIndexedPath(node: IndexedNode, index: WorkspaceIndex): string {
 }
 
 /**
- * Builds a `indent-xpath` ref string that uniquely identifies `node`
+ * Builds a `indent-lang`'s xpath module ref string that uniquely identifies `node`
  * within the whole workspace, using a 3-tier strategy (shortest/most
  * readable form that stays unique):
  *
