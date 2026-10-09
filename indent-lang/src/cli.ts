@@ -1,32 +1,24 @@
 #!/usr/bin/env node
-import { existsSync, mkdirSync, statSync, writeFileSync } from "node:fs";
-import { basename, dirname, resolve } from "node:path";
+import { mkdirSync, writeFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
 import { parseFile } from "./resolver.js";
-import { PROJECT_FILENAME, parseProject, type ProjectManifest } from "./project.js";
 import { IndentParseError, type ParseResult } from "./types.js";
 import { parseSchemaFile, validateAgainstSchema, type Schema } from "./schema/index.js";
 import { resolveSchemaFor } from "./schema/resolve.js";
 
 interface CliOptions {
   path?: string;
-  mode: "auto" | "project" | "file";
   output?: string;
   schemaPath?: string;
 }
 
 function parseArgs(argv: string[]): CliOptions {
-  const options: CliOptions = { mode: "auto" };
+  const options: CliOptions = {};
   const positionals: string[] = [];
 
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
     switch (arg) {
-      case "--project":
-        options.mode = "project";
-        break;
-      case "--file":
-        options.mode = "file";
-        break;
       case "-o":
       case "--output":
         options.output = argv[++i];
@@ -51,32 +43,16 @@ function parseArgs(argv: string[]): CliOptions {
 function printHelp(): void {
   process.stdout.write(
     `Usage: indent-lang <path> [options]\n\n` +
-      `Parses an Indent project or a single .inml file and prints the result as JSON.\n\n` +
-      `<path> may be:\n` +
-      `  - a directory containing a '${PROJECT_FILENAME}' manifest\n` +
-      `  - a direct path to a '${PROJECT_FILENAME}' manifest\n` +
-      `  - a direct path to any other '.inml' file, parsed standalone (its own\n` +
-      `    '!include's are still spliced in, but there is no project manifest)\n\n` +
-      `By default the mode is auto-detected from <path>. Use --project or --file\n` +
-      `to force a specific mode instead of auto-detecting.\n\n` +
+      `Parses a single .inml file (its own '!include's are still spliced in) and\n` +
+      `prints the result as JSON.\n\n` +
       `Schema validation is auto-discovered from an in-document '!schema \"<path>\"'\n` +
-      `directive, or (in project mode) the '<name>' segment of a 'doc.<name>.inml'\n` +
-      `filename looked up in the project's 'schemas' registry. Pass --schema to\n` +
-      `override auto-discovery with an explicit schema file.\n\n` +
+      `directive. Pass --schema to override auto-discovery with an explicit\n` +
+      `schema file.\n\n` +
       `Options:\n` +
-      `  --project        Force project-manifest mode (error if not found)\n` +
-      `  --file           Force standalone-file mode (error if it's a project.inml)\n` +
       `  --schema <path>  Validate against this schema file, overriding auto-discovery\n` +
       `  -o, --output <p> Write JSON output to file <p> instead of stdout\n` +
       `  -h, --help       Show this help message\n`,
   );
-}
-
-function isProjectManifestPath(resolvedPath: string): boolean {
-  if (!existsSync(resolvedPath)) return false;
-  const stat = statSync(resolvedPath);
-  if (stat.isDirectory()) return existsSync(resolve(resolvedPath, PROJECT_FILENAME));
-  return basename(resolvedPath) === PROJECT_FILENAME;
 }
 
 function run(): void {
@@ -89,44 +65,14 @@ function run(): void {
   }
 
   const resolvedPath = resolve(options.path);
-  let useProjectMode: boolean;
-
-  if (options.mode === "project") {
-    useProjectMode = true;
-  } else if (options.mode === "file") {
-    useProjectMode = false;
-  } else {
-    useProjectMode = isProjectManifestPath(resolvedPath);
-  }
 
   try {
-    let output: unknown;
-    let result: ParseResult;
-    let manifest: ProjectManifest | undefined;
-    let includedFiles: string[] | undefined;
-
-    if (useProjectMode) {
-      ({ manifest, result, includedFiles } = parseProject(resolvedPath));
-      output = {
-        manifest: { ...manifest, schemas: Object.fromEntries(manifest.schemas) },
-        result,
-        includedFiles,
-      };
-    } else {
-      if (basename(resolvedPath) === PROJECT_FILENAME) {
-        throw new IndentParseError(
-          `'${resolvedPath}' is a '${PROJECT_FILENAME}' manifest; use --project (or omit --file) to parse it as a project`,
-          0,
-          resolvedPath,
-        );
-      }
-      result = parseFile(resolvedPath);
-      output = { result };
-    }
+    const result: ParseResult = parseFile(resolvedPath);
+    const output = { result };
 
     const schemaPath = options.schemaPath
       ? resolve(options.schemaPath)
-      : resolveSchemaFor(resolvedPath, result, manifest);
+      : resolveSchemaFor(result);
 
     let hasSchemaErrors = false;
     if (schemaPath) {

@@ -12,6 +12,5 @@ export { SchemaDefinitionError } from "./types.js";
 export {
   SCHEMA_FILE_SUFFIX,
   isSchemaDefinitionFile,
-  extractSchemaSegment,
   resolveSchemaFor,
 } from "./resolve.js";

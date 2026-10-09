@@ -5,11 +5,7 @@ import type { Range } from "vscode-languageserver";
 import { CstParser } from "./cst.js";
 import { parseXPath, selectNodes } from "indent-lang/xpath";
 import { buildXPathForest } from "./xpathTree.js";
-import {
-  discoverProjects,
-  findProjectForFile as findProjectForFileImpl,
-  type DiscoveredProject,
-} from "./project.js";
+import { findAllInmlFiles } from "./project.js";
 import type {
   AstDocument,
   AstStatement,
@@ -49,15 +45,12 @@ export class WorkspaceIndex {
   public inboundReferences = new Map<string, RefReference[]>();
   public includeLinks: IncludeLink[] = [];
   public workspaceRoots: string[] = [];
-  public projects: DiscoveredProject[] = [];
-  /** Absolute fs paths reachable (via `!include`) from any discovered project.inml's entry. */
-  public reachableFiles: Set<string> = new Set();
   /**
-   * URIs of documents loaded from disk by `preloadProjectFiles` rather than
-   * opened/edited in the editor. Tracked separately so a later
-   * `preloadProjectFiles` call can safely evict them if the file falls out
-   * of `reachableFiles` (e.g. its `!include` was removed), without ever
-   * evicting a document the user genuinely has open.
+   * URIs of documents loaded from disk by `preloadWorkspaceFiles` rather
+   * than opened/edited in the editor. Tracked separately so a later
+   * `preloadWorkspaceFiles` call can safely evict them if the file falls
+   * out of the discovered set (e.g. it was deleted), without ever evicting
+   * a document the user genuinely has open.
    */
   public preloadedUris: Set<string> = new Set();
 
@@ -70,49 +63,36 @@ export class WorkspaceIndex {
   }
 
   /**
-   * Scans `roots` for `project.inml` manifests and resolves each one's
-   * include graph, populating `projects`/`reachableFiles`. Call once at
-   * server init (with the LSP workspace folders) and again whenever a
-   * `project.inml` file changes, since reachability affects every other
-   * document's orphan-file diagnostic.
+   * Remembers `roots` for later use (e.g. `preloadWorkspaceFiles`). Call
+   * once at server init with the LSP workspace folders.
    */
-  public refreshProjects(roots: string[] = this.workspaceRoots) {
+  public setWorkspaceRoots(roots: string[] = this.workspaceRoots) {
     this.workspaceRoots = roots;
-    const { projects, reachableFiles } = discoverProjects(roots);
-    this.projects = projects;
-    this.reachableFiles = reachableFiles;
   }
 
   /**
-   * Resolves which discovered project (if any) governs `fsPath`, via
-   * nearest-ancestor `project.inml` lookup (not the global `reachableFiles`
-   * union) -- see `findProjectForFile` in `project.ts` for the rationale.
-   * Returns `undefined` if no project.inml governs this file.
-   */
-  public findProjectForFile(fsPath: string): DiscoveredProject | undefined {
-    return findProjectForFileImpl(fsPath, this.projects, this.workspaceRoots);
-  }
-
-  /**
-   * Reads and indexes every file in `reachableFiles` that isn't already in
-   * `documents`, so xpath/ref resolution (`rebuildIndex`'s ref-forest) sees
-   * a project's *entire* include graph, not just whichever files happen to
-   * be open in the editor. Without this, a ref in an open file pointing at
-   * a node defined in a never-opened (but genuinely included) file would
-   * falsely resolve to zero targets, since that file's nodes never made it
-   * into `rootNodes`/the xpath forest.
+   * Reads and indexes every `.inml` file under `workspaceRoots` that isn't
+   * already in `documents`, so xpath/ref resolution (`rebuildIndex`'s
+   * ref-forest) sees every document in the workspace, not just whichever
+   * ones happen to be open in the editor. Without this, a ref in an open
+   * file pointing at a node defined in a never-opened file would falsely
+   * resolve to zero targets, since that file's nodes never made it into
+   * `rootNodes`/the xpath forest.
    *
    * Files already open (or previously edited) are left untouched -- only
    * gaps in `documents` get filled from disk. Previously preloaded files
-   * that have since fallen out of `reachableFiles` (e.g. an `!include` was
-   * removed) are evicted, since stale nodes there could cause a since-
-   * removed reference to spuriously keep resolving. Call after
-   * `refreshProjects` whenever the project graph may have changed.
+   * that have since been deleted are evicted, since stale nodes there could
+   * cause a since-removed reference to spuriously keep resolving.
    */
-  public preloadProjectFiles() {
+  public preloadWorkspaceFiles() {
     let changed = false;
 
-    for (const fsPath of this.reachableFiles) {
+    const discovered = new Set<string>();
+    for (const root of this.workspaceRoots) {
+      for (const fsPath of findAllInmlFiles(root)) discovered.add(fsPath);
+    }
+
+    for (const fsPath of discovered) {
       const uri = fsPathToUri(fsPath);
       if (this.documents.has(uri)) continue;
       try {
@@ -128,7 +108,7 @@ export class WorkspaceIndex {
     }
 
     for (const uri of [...this.preloadedUris]) {
-      if (!this.reachableFiles.has(uriToFsPath(uri))) {
+      if (!discovered.has(uriToFsPath(uri))) {
         this.documents.delete(uri);
         this.preloadedUris.delete(uri);
         changed = true;
@@ -142,8 +122,8 @@ export class WorkspaceIndex {
     const { doc } = this.parser.parse(uri, text, version);
     this.documents.set(uri, doc);
     // The editor now genuinely has this document open/edited -- it's no
-    // longer merely a disk-preloaded stand-in, so `preloadProjectFiles`
-    // must never evict it just because it fell out of `reachableFiles`.
+    // longer merely a disk-preloaded stand-in, so `preloadWorkspaceFiles`
+    // must never evict it just because it's no longer (re)discovered.
     this.preloadedUris.delete(uri);
     this.rebuildIndex();
     return doc;
