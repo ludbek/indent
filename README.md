@@ -54,8 +54,8 @@ or unquoted, which determines how they're parsed:
 ### ref
 
 An unquoted value that isn't `true`/`false`/a number is parsed as a **ref**
-— a simplified subset of XPath-like syntax (implemented by the sibling
-`indent-xpath` package, and used by `indent-language-server` to
+— a simplified subset of XPath-like syntax (implemented by `indent-lang`'s
+`xpath` module, and used by `indent-language-server` to
 resolve/navigate references) intended as a native way to point at other
 nodes in the tree. It parses into `{ type: "ref", raw: string }`; only the
 raw text is kept, it is not resolved or split into steps by this package.
@@ -150,8 +150,7 @@ system "Ordering System"
 
 | Package | Description |
 | --- | --- |
-| [`indent-parser`](./indent-parser/README.md) | Parser for the Indent Markup Language. |
-| [`indent-xpath`](./indent-xpath/README.md) | XPath-like node selector for tree-shaped data. |
+| [`indent-lang`](./indent-lang/README.md) | Parser, XPath-like selector, and schema validator for the Indent Markup Language. |
 | [`treesitter-indent`](./treesitter-indent/README.md) | Tree-sitter grammar for the Indent Markup Language. |
 | [`indent-language-server`](./indent-language-server/README.md) | Language Server Protocol implementation for the Indent Markup Language. |
 | [`vscode-indent-lang`](./vscode-indent-lang/README.md) | VS Code syntax highlighting extension for the Indent Markup Language. |

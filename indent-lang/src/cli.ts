@@ -2,13 +2,16 @@
 import { existsSync, mkdirSync, statSync, writeFileSync } from "node:fs";
 import { basename, dirname, resolve } from "node:path";
 import { parseFile } from "./resolver.js";
-import { PROJECT_FILENAME, parseProject } from "./project.js";
-import { IndentParseError } from "./types.js";
+import { PROJECT_FILENAME, parseProject, type ProjectManifest } from "./project.js";
+import { IndentParseError, type ParseResult } from "./types.js";
+import { parseSchemaFile, validateAgainstSchema, type Schema } from "./schema/index.js";
+import { resolveSchemaFor } from "./schema/resolve.js";
 
 interface CliOptions {
   path?: string;
   mode: "auto" | "project" | "file";
   output?: string;
+  schemaPath?: string;
 }
 
 function parseArgs(argv: string[]): CliOptions {
@@ -28,6 +31,9 @@ function parseArgs(argv: string[]): CliOptions {
       case "--output":
         options.output = argv[++i];
         break;
+      case "--schema":
+        options.schemaPath = argv[++i];
+        break;
       case "-h":
       case "--help":
         printHelp();
@@ -44,7 +50,7 @@ function parseArgs(argv: string[]): CliOptions {
 
 function printHelp(): void {
   process.stdout.write(
-    `Usage: indent-parser <path> [options]\n\n` +
+    `Usage: indent-lang <path> [options]\n\n` +
       `Parses an Indent project or a single .inml file and prints the result as JSON.\n\n` +
       `<path> may be:\n` +
       `  - a directory containing a '${PROJECT_FILENAME}' manifest\n` +
@@ -53,9 +59,14 @@ function printHelp(): void {
       `    '!include's are still spliced in, but there is no project manifest)\n\n` +
       `By default the mode is auto-detected from <path>. Use --project or --file\n` +
       `to force a specific mode instead of auto-detecting.\n\n` +
+      `Schema validation is auto-discovered from an in-document '!schema \"<path>\"'\n` +
+      `directive, or (in project mode) the '<name>' segment of a 'doc.<name>.inml'\n` +
+      `filename looked up in the project's 'schemas' registry. Pass --schema to\n` +
+      `override auto-discovery with an explicit schema file.\n\n` +
       `Options:\n` +
       `  --project        Force project-manifest mode (error if not found)\n` +
       `  --file           Force standalone-file mode (error if it's a project.inml)\n` +
+      `  --schema <path>  Validate against this schema file, overriding auto-discovery\n` +
       `  -o, --output <p> Write JSON output to file <p> instead of stdout\n` +
       `  -h, --help       Show this help message\n`,
   );
@@ -90,9 +101,17 @@ function run(): void {
 
   try {
     let output: unknown;
+    let result: ParseResult;
+    let manifest: ProjectManifest | undefined;
+    let includedFiles: string[] | undefined;
+
     if (useProjectMode) {
-      const { manifest, result, includedFiles } = parseProject(resolvedPath);
-      output = { manifest, result, includedFiles };
+      ({ manifest, result, includedFiles } = parseProject(resolvedPath));
+      output = {
+        manifest: { ...manifest, schemas: Object.fromEntries(manifest.schemas) },
+        result,
+        includedFiles,
+      };
     } else {
       if (basename(resolvedPath) === PROJECT_FILENAME) {
         throw new IndentParseError(
@@ -101,8 +120,23 @@ function run(): void {
           resolvedPath,
         );
       }
-      const result = parseFile(resolvedPath);
+      result = parseFile(resolvedPath);
       output = { result };
+    }
+
+    const schemaPath = options.schemaPath
+      ? resolve(options.schemaPath)
+      : resolveSchemaFor(resolvedPath, result, manifest);
+
+    let hasSchemaErrors = false;
+    if (schemaPath) {
+      const schema: Schema = parseSchemaFile(schemaPath);
+      const diagnostics = validateAgainstSchema(result.roots, schema);
+      for (const diagnostic of diagnostics) {
+        const label = diagnostic.severity === "error" ? "Error" : "Warning";
+        process.stderr.write(`${label}: ${diagnostic.message}\n`);
+        if (diagnostic.severity === "error") hasSchemaErrors = true;
+      }
     }
 
     const json = `${JSON.stringify(output, null, 2)}\n`;
@@ -112,6 +146,10 @@ function run(): void {
       writeFileSync(outPath, json);
     } else {
       process.stdout.write(json);
+    }
+
+    if (hasSchemaErrors) {
+      process.exit(1);
     }
   } catch (err) {
     if (err instanceof IndentParseError) {

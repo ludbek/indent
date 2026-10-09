@@ -10,7 +10,7 @@ export default defineConfig({
   target: "node18",
   // Only web-tree-sitter stays external (it ships its own wasm asset that must
   // be located on disk at runtime). Everything else -- vscode-languageserver,
-  // vscode-uri, indent-parser, indent-xpath, etc. -- must be bundled so the
+  // vscode-uri, indent-lang, etc. -- must be bundled so the
   // built dist/*.cjs is fully self-contained once copied into a packaged
   // VS Code extension's dist/ (no reliance on a workspace-hoisted node_modules).
   external: ["web-tree-sitter"],
@@ -18,7 +18,6 @@ export default defineConfig({
     "vscode-languageserver",
     "vscode-languageserver-textdocument",
     "vscode-uri",
-    "indent-parser",
-    "indent-xpath",
+    "indent-lang",
   ],
 });

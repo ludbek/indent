@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseXPath, selectNodes } from "indent-xpath";
+import { parseXPath, selectNodes } from "indent-lang/xpath";
 import { WorkspaceIndex } from "../src/indexer.js";
 import { buildXPathForest } from "../src/xpathTree.js";
 import {
@@ -116,7 +116,7 @@ describe("refBuilder", () => {
     }
   });
 
-  it("round-trips: every generated ref resolves back through indent-xpath to exactly its own node", async () => {
+  it("round-trips: every generated ref resolves back through indent-lang/xpath to exactly its own node", async () => {
     const index = await makeIndex();
     const forest = buildXPathForest(index.rootNodes, index.nodesByPath);
     for (const node of index.nodesByPath.values()) {

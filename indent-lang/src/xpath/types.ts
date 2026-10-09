@@ -1,8 +1,8 @@
 /**
  * Generic node shape this package operates on. Structurally compatible with
- * `indent-parser`'s `IndentNode` (kind/value/attrs/children) but declared
+ * `indent-lang`'s `IndentNode` (kind/value/attrs/children) but declared
  * independently -- this package has no runtime or dev dependency on
- * `indent-parser`, so it stays reusable for any tree-shaped data with the
+ * `indent-lang`, so it stays reusable for any tree-shaped data with the
  * same basic fields (kind, optional positional value, optional attrs,
  * optional children).
  */
@@ -19,7 +19,7 @@ export interface XPathNode {
  * A literal value used in a predicate, typed per Indent's own value rules:
  * quoted (`"..."`) is always a string; unquoted `true`/`false` is a boolean;
  * unquoted numeric text (`/^-?\d+(\.\d+)?$/`) is a number. Anything else
- * unquoted is a parse error (matches `indent-parser`'s attribute typing).
+ * unquoted is a parse error (matches `indent-lang`'s attribute typing).
  */
 export type XPathLiteral = string | number | boolean;
 

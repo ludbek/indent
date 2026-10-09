@@ -3,7 +3,7 @@
  * @author Suren
  * @license MIT
  *
- * Grammar shape (mirrors indent-parser/src/tokenizer.ts + parser.ts):
+ * Grammar shape (mirrors indent-lang/src/tokenizer.ts + parser.ts):
  *
  *   statement := <type> (key=value)*  NEWLINE (INDENT statement+ DEDENT)?
  *   value     := string | number | boolean
@@ -101,7 +101,7 @@ module.exports = grammar({
     // outside of any quotes.
     //
     // Only the `/` (absolute) and `//` (descendant) prefixes are accepted,
-    // matching the actual ref dialect exactly (indent-parser's
+    // matching the actual ref dialect exactly (indent-lang's
     // tokenizer.ts `REF_SEPARATOR`) -- deliberately NOT `./`/`../`
     // (relative/parent axes, unsupported) and NOT a bareword-anchored
     // form (`[A-Za-z_*@]...`, old dialect's wildcard/attribute-axis/bare

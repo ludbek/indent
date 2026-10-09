@@ -5,7 +5,7 @@ import {
 } from "vscode-languageserver";
 import type { WorkspaceIndex } from "./indexer.js";
 import { uriToFsPath } from "./indexer.js";
-import { PROJECT_FILENAME } from "indent-parser";
+import { PROJECT_FILENAME } from "indent-lang";
 import { basename } from "node:path";
 
 export function computeDiagnostics(

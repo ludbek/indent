@@ -14,7 +14,7 @@ import type { AstValueType, IndexedNode } from "./types.js";
 /**
  * Indent has no reserved/special tag names -- `kind` (the first word of a
  * statement line) and attribute names are ordinary identifiers chosen by the
- * author (see indent-parser/src/types.ts:42). Completions must therefore be
+ * author (see indent-lang/src/types.ts:42). Completions must therefore be
  * derived from what already exists in the workspace, not from a hardcoded
  * schema of "known" kinds or attributes.
  */
@@ -535,7 +535,7 @@ function buildRefCompletionItems(
  * disk that may not even be part of the workspace yet -- so this reads the
  * directory directly via `fs.readdirSync` relative to the including
  * document's own location, mirroring how `resolveIncludePath` in
- * indent-parser/src/resolver.ts resolves the same string at parse time.
+ * indent-lang/src/resolver.ts resolves the same string at parse time.
  *
  * Only directories and `.inml` files are suggested (directories so the user
  * can keep drilling down; non-.inml files are never valid include targets).

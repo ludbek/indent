@@ -5,7 +5,7 @@
  * `alias /Member/Rollover`.
  *
  * Only the `raw` source text is kept; it is not parsed into steps (parsing
- * is done downstream by the `indent-xpath` package). This is a simplified
+ * is done downstream by the `indent-lang`'s xpath module package). This is a simplified
  * subset of XPath syntax intended as a native reference mechanism between
  * nodes in the tree (e.g. for the Language Server), supporting:
  *
@@ -66,6 +66,16 @@ export interface IndentNode {
 export interface ParseResult {
   /** Top-level (zero-indentation) nodes, in source order. */
   roots: IndentNode[];
+  /**
+   * Resolved path from an in-document `!schema "<path>"` directive, when
+   * present. The directive itself is stripped from `roots` -- it never
+   * appears as a node in the tree. Only set by `parseFile`/`parseFileWithSources`
+   * (which know the source file's location to resolve the path against);
+   * plain `parse()` on an in-memory string leaves this `undefined` even if
+   * the directive is present, since there is no base path to resolve
+   * against.
+   */
+  schemaRef?: string;
 }
 
 /** Thrown when the Indent source cannot be parsed. */

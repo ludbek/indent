@@ -720,13 +720,13 @@ desc="Test"
 
   describe("Include Path Completion", () => {
     // Include paths point at real files on disk, not at parsed workspace
-    // nodes, so this points the doc uri at the real indent-parser include
+    // nodes, so this points the doc uri at the real indent-lang include
     // fixtures directory and reads the actual filesystem -- unlike every
     // other completion stage, which is driven purely off in-memory index
     // state under the fake `file:///workspace/...` uris used elsewhere.
     const fixturesDir = resolvePath(
       __dirname,
-      "../../indent-parser/test/fixtures/includes"
+      "../../indent-lang/test/fixtures/includes"
     );
     const includeUri = fsPathToUri(resolvePath(fixturesDir, "completion-test.inml"));
 

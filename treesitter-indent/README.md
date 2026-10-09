@@ -6,7 +6,7 @@ Tree-sitter grammar for Indent Markup Language.
 
 The grammar is intentionally generic -- there is no special-cased
 "edge"/"reference"/"include" concept at this layer, matching the hand-written
-parser in `indent-parser`:
+parser in `indent-lang`:
 
 ```
 document  := NEWLINE? statement*
@@ -50,7 +50,7 @@ kinds like `->`, and EOF without a trailing newline.
 You can also sanity-check against real fixtures directly:
 
 ```sh
-tree-sitter parse ../indent-parser/test/fixtures/sample.inml
+tree-sitter parse ../indent-lang/test/fixtures/sample.inml
 tree-sitter parse ../test.inml
 ```
 

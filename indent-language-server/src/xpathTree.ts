@@ -1,9 +1,9 @@
-import type { XPathNode } from "indent-xpath";
+import type { XPathNode } from "indent-lang/xpath";
 import type { IndexedNode } from "./types.js";
 
 /**
  * Adapter node bridging `IndexedNode` (whose `childPaths` are canonical-path
- * strings requiring a `nodesByPath` map lookup to resolve) to `indent-xpath`'s
+ * strings requiring a `nodesByPath` map lookup to resolve) to `indent-lang`'s xpath module's
  * `XPathNode` shape (which expects real, inlined `children` arrays). Carries
  * a back-reference to the original `IndexedNode` so callers can recover
  * canonical paths / statements / etc. from `selectNodes` results.
@@ -34,7 +34,7 @@ function toXPathNode(
 }
 
 /**
- * Builds a `indent-xpath`-compatible forest from the workspace's root
+ * Builds a `indent-lang`'s xpath module-compatible forest from the workspace's root
  * `IndexedNode`s, resolving `childPaths` through `nodesByPath` once so the
  * resulting tree has real inlined `children` arrays. Intended to be built
  * once per `WorkspaceIndex.rebuildIndex()` call, then reused across all

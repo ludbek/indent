@@ -2,8 +2,7 @@
   "name": "indent-monorepo",
   "private": true,
   "workspaces": [
-    "indent-parser",
-    "indent-xpath",
+    "indent-lang",
     "treesitter-indent",
     "indent-language-server",
     "vscode-indent-lang"

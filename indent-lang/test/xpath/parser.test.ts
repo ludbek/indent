@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { parseXPath } from "../src/parser.js";
-import { XPathParseError } from "../src/types.js";
+import { parseXPath } from "../../src/xpath/parser.js";
+import { XPathParseError } from "../../src/xpath/types.js";
 
 describe("parseXPath", () => {
   it("parses an absolute path", () => {

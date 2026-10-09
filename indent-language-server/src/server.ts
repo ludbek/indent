@@ -21,7 +21,7 @@ import { formatDocument, formatOnType } from "./formatting.js";
 import { prepareRename, renameSymbol } from "./rename.js";
 import { getSearchableNodes } from "./nodeSearch.js";
 import { uriToFsPath } from "./indexer.js";
-import { PROJECT_FILENAME } from "indent-parser";
+import { PROJECT_FILENAME } from "indent-lang";
 import { basename } from "node:path";
 
 export async function createIndentLanguageServer(customConnection?: _Connection) {

@@ -12,6 +12,25 @@ import { IndentParseError, ParseResult } from "./types.js";
 const INCLUDE_KIND = "!include";
 
 /**
+ * The kind name for the built-in schema directive. A schema line has the
+ * shape `!schema "path"`: kind `"!schema"`, a mandatory quoted-string
+ * positional value holding the relative path to a schema definition file,
+ * and no attributes. It must be the first statement in the entry file, at
+ * depth 0, and appear at most once. It is stripped from the parsed tree --
+ * callers read the resolved path off `ParseResult.schemaRef` instead. It
+ * does not propagate through `!include`: an `!schema` directive found in an
+ * included file is a parse error.
+ */
+const SCHEMA_KIND = "!schema";
+
+/** Mutable context threaded through `resolveIncludeTokens` to capture an `!schema` directive. */
+interface SchemaDirectiveContext {
+  schemaPath?: string;
+  seen: boolean;
+}
+
+
+/**
  * Resolves an include path relative to the file that references it.
  * All include paths are relative (`./...`, `../...`) and are resolved
  * relative to the directory of `fromFile`.
@@ -37,10 +56,70 @@ function resolveIncludeTokens(
   currentFile: string,
   chain: readonly string[],
   visited?: Set<string>,
+  schemaContext?: SchemaDirectiveContext,
 ): LineToken[] {
+  const isEntryFile = currentFile === chain[0];
   const result: LineToken[] = [];
 
-  for (const token of tokens) {
+  for (let i = 0; i < tokens.length; i++) {
+    const token = tokens[i];
+
+    if (token.kind === SCHEMA_KIND) {
+      if (!isEntryFile) {
+        throw new IndentParseError(
+          `'${SCHEMA_KIND}' directive is not allowed in an included file -- it does not propagate through '${INCLUDE_KIND}'`,
+          token.line,
+          currentFile,
+        );
+      }
+      if (!schemaContext) {
+        throw new IndentParseError(
+          `'${SCHEMA_KIND}' directive is not supported in this context`,
+          token.line,
+          currentFile,
+        );
+      }
+      if (schemaContext.seen) {
+        throw new IndentParseError(
+          `'${SCHEMA_KIND}' directive may only appear once per file`,
+          token.line,
+          currentFile,
+        );
+      }
+      if (i !== 0) {
+        throw new IndentParseError(
+          `'${SCHEMA_KIND}' must be the first statement in the file`,
+          token.line,
+          currentFile,
+        );
+      }
+      if (token.depth !== 0) {
+        throw new IndentParseError(
+          `'${SCHEMA_KIND}' must be at the top level (depth 0)`,
+          token.line,
+          currentFile,
+        );
+      }
+      if (Object.keys(token.attrs).length > 0) {
+        throw new IndentParseError(
+          `'${SCHEMA_KIND}' directive does not accept attributes`,
+          token.line,
+          currentFile,
+        );
+      }
+      if (typeof token.value !== "string") {
+        throw new IndentParseError(
+          `'${SCHEMA_KIND}' requires a quoted string path, e.g. '${SCHEMA_KIND} "./schema.inml"'`,
+          token.line,
+          currentFile,
+        );
+      }
+
+      schemaContext.seen = true;
+      schemaContext.schemaPath = resolveIncludePath(token.value, currentFile);
+      continue;
+    }
+
     if (token.kind !== INCLUDE_KIND) {
       result.push(token);
       continue;
@@ -95,6 +174,7 @@ function resolveIncludeTokens(
       resolvedPath,
       [...chain, resolvedPath],
       visited,
+      schemaContext,
     );
 
     for (const includedToken of includedTokens) {
@@ -128,12 +208,19 @@ function tokenizeFile(source: string, filePath: string): LineToken[] {
 export function parseFile(entryPath: string): ParseResult {
   const resolvedEntryPath = resolve(entryPath);
   const source = readFileSync(resolvedEntryPath, "utf8");
+  const schemaContext: SchemaDirectiveContext = { seen: false };
   const tokens = resolveIncludeTokens(
     tokenizeFile(source, resolvedEntryPath),
     resolvedEntryPath,
     [resolvedEntryPath],
+    undefined,
+    schemaContext,
   );
-  return buildTree(tokens);
+  const result = buildTree(tokens);
+  if (schemaContext.schemaPath !== undefined) {
+    result.schemaRef = schemaContext.schemaPath;
+  }
+  return result;
 }
 
 /**
@@ -152,11 +239,17 @@ export function parseFileWithSources(entryPath: string): {
   const resolvedEntryPath = resolve(entryPath);
   const source = readFileSync(resolvedEntryPath, "utf8");
   const visited = new Set<string>([resolvedEntryPath]);
+  const schemaContext: SchemaDirectiveContext = { seen: false };
   const tokens = resolveIncludeTokens(
     tokenizeFile(source, resolvedEntryPath),
     resolvedEntryPath,
     [resolvedEntryPath],
     visited,
+    schemaContext,
   );
-  return { result: buildTree(tokens), files: [...visited] };
+  const result = buildTree(tokens);
+  if (schemaContext.schemaPath !== undefined) {
+    result.schemaRef = schemaContext.schemaPath;
+  }
+  return { result, files: [...visited] };
 }
