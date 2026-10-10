@@ -43,5 +43,9 @@
     "build": "tsup",
     "test": "vitest run",
     "test:watch": "vitest"
+  },
+  "dependencies": {
+    "tree-sitter": "^0.25.0",
+    "treesitter-indent": "^0.2.1"
   }
 }
