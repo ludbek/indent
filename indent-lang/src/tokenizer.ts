@@ -384,11 +384,14 @@ const REF_ATTR_CLAUSE = `${REF_NAME}(?:=${REF_LITERAL})?`;
 const REF_PREDICATE_BODY = `(?:\\.=${REF_LITERAL}|${REF_ATTR_CLAUSE}(?:,${REF_ATTR_CLAUSE})*)`;
 
 /**
- * A single ref step: a node kind name, optionally followed by a
+ * A single ref step: a node kind name, or the wildcard `*` (matches any
+ * node kind -- see `indent-lang`'s xpath module), optionally followed by a
  * `[predicate]` bracket. (No `name=value` self-value shorthand -- use the
- * bracketed `[.=value]` form instead.)
+ * bracketed `[.=value]` form instead.) Wildcard must be the entire step
+ * name, not mixed with other characters (e.g. `*foo` is rejected, since
+ * this alternation only matches a bare `*` or a full `REF_NAME`).
  */
-const REF_STEP = `${REF_NAME}(?:\\[${REF_PREDICATE_BODY}\\])?`;
+const REF_STEP = `(?:\\*|${REF_NAME})(?:\\[${REF_PREDICATE_BODY}\\])?`;
 
 /** Step separator: `/` (child, one level) or `//` (descendant, any depth). */
 const REF_SEPARATOR = "(?://|/)";
@@ -397,8 +400,9 @@ const REF_SEPARATOR = "(?://|/)";
  * Full simplified-xpath grammar for a `ref` value: an absolute (`/`) or
  * descendant (`//`) prefix, then separator-joined steps. Only absolute and
  * descendant paths are supported -- no bare relative paths, `..`, `.`,
- * standalone `@name`, wildcard `*`, or `name=value` shorthand (matches the
- * subset implemented by the `indent-lang`'s xpath module package).
+ * standalone `@name`, or `name=value` shorthand (matches the subset
+ * implemented by the `indent-lang`'s xpath module package). A step may be
+ * the wildcard `*` (matches any node kind).
  */
 const XPATH_PATTERN = new RegExp(`^${REF_SEPARATOR}${REF_STEP}(?:${REF_SEPARATOR}${REF_STEP})*$`);
 

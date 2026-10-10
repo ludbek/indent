@@ -9,15 +9,51 @@ import {
   type Range,
 } from "vscode-languageserver";
 import { uriToFsPath, type WorkspaceIndex } from "./indexer.js";
-import type { AstValueType, IndexedNode } from "./types.js";
+import type { AstDocument, AstValueType, IndexedNode } from "./types.js";
+import type { ChildRef, Schema } from "indent-lang/schema";
 
 /**
  * Indent has no reserved/special tag names -- `kind` (the first word of a
  * statement line) and attribute names are ordinary identifiers chosen by the
- * author (see indent-lang/src/types.ts:42). Completions must therefore be
+ * author (see indent-lang/src/types.ts:42). Completions are primarily
  * derived from what already exists in the workspace, not from a hardcoded
- * schema of "known" kinds or attributes.
+ * set of "known" kinds or attributes.
+ *
+ * When a document has a valid `!schema "path"` binding (see
+ * `WorkspaceIndex.schemaBindingByUri`), schema-declared kinds/attrs/types are
+ * additionally offered -- unioned with, never replacing, the workspace-stats
+ * derived suggestions above. See `getSchemaForDocument`/`findEnclosingKind`.
  */
+
+/** Resolves the valid, parsed `Schema` bound to a document, if any. */
+function getSchemaForDocument(index: WorkspaceIndex, uri: string): Schema | undefined {
+  const binding = index.schemaBindingByUri.get(uri);
+  if (!binding || !binding.isValidSchemaFile || !binding.resolvedUri) return undefined;
+  return index.schemaFiles.get(binding.resolvedUri)?.schema;
+}
+
+/** Indentation unit used by the indentation diagnostic -- 4 spaces per depth level. */
+const INDENT_UNIT = 4;
+
+/**
+ * Finds the kind name of the nearest preceding statement at `parentDepth`
+ * (i.e. the enclosing parent of whatever is being typed at `currentDepth`),
+ * by scanning statements that start before `position`. Returns `undefined`
+ * at the document root (`currentDepth === 0`, no parent to resolve).
+ */
+function findEnclosingKind(doc: AstDocument, position: Position, currentDepth: number): string | undefined {
+  if (currentDepth <= 0) return undefined;
+  const parentDepth = currentDepth - 1;
+  let best: { line: number; kind: string } | undefined;
+  for (const stmt of doc.allStatements) {
+    if (stmt.depth !== parentDepth) continue;
+    if (stmt.range.start.line >= position.line) continue;
+    if (!best || stmt.range.start.line > best.line) {
+      best = { line: stmt.range.start.line, kind: stmt.kind };
+    }
+  }
+  return best?.kind;
+}
 
 /**
  * Matches the in-progress tail of a ref value after the leading `/`/`//`:
@@ -633,6 +669,27 @@ export function computeCompletions(
     };
   }
 
+  // --- `!schema "path"` filesystem path completion ---
+  // Same rationale/mechanics as `!include` above -- a schema binding points
+  // at a file on disk (classified by the `.schema.inml` suffix), not at a
+  // workspace index node. Filtering is identical: directories + any `.inml`
+  // file, no suffix restriction (an incorrectly-suffixed/invalid target is
+  // surfaced as a diagnostic, not filtered out of completion).
+  const schemaPathMatch = prefix.match(/^\s*!schema\s+"([^"]*)$/);
+  if (schemaPathMatch) {
+    const typedValue = schemaPathMatch[1];
+    const valueStartChar = position.character - typedValue.length;
+    const valueRange = {
+      start: { line: position.line, character: valueStartChar },
+      end: position,
+    };
+    const docFsPath = uriToFsPath(doc.uri);
+    return {
+      isIncomplete: true,
+      items: buildIncludePathCompletionItems(typedValue, valueRange, docFsPath),
+    };
+  }
+
   const { kindCounts, attrsByKind, positionalValuesByKind, attrValuesByKindAttr } =
     collectWorkspaceStats(index);
 
@@ -744,7 +801,29 @@ export function computeCompletions(
         ? "bare-partial"
         : "bare-empty";
 
-    return buildValueCompletionItems(statsMap, { mode, partial, range });
+    const valueItems = buildValueCompletionItems(statsMap, { mode, partial, range });
+
+    // Schema-driven typed value suggestions (currently: boolean enumeration).
+    // String/number/ref types have no enumerable value set to offer beyond
+    // what's already observed in the workspace (handled by statsMap above).
+    if (!isQuoted && currentKind) {
+      const schema = getSchemaForDocument(index, uri);
+      const attrSchema = schema?.elements.get(currentKind)?.attrs.get(attrName);
+      if (attrSchema?.type === "boolean") {
+        for (const boolLiteral of ["true", "false"]) {
+          if (partial && !boolLiteral.startsWith(partial.toLowerCase())) continue;
+          if (valueItems.some((it) => it.label === boolLiteral)) continue;
+          valueItems.push({
+            label: boolLiteral,
+            kind: CompletionItemKind.Value,
+            detail: "boolean (schema)",
+            textEdit: { range, newText: boolLiteral },
+          });
+        }
+      }
+    }
+
+    return valueItems;
   }
 
   // --- Positional (node) VALUE completion ---
@@ -789,15 +868,35 @@ export function computeCompletions(
       // Ambiguous bare token -- also offer attribute names that could start
       // here (once the user adds `=`), filtered by whatever's typed so far.
       const attrCounts = attrsByKind.get(kindName);
+      const suggestedAttrNames = new Set<string>();
       if (attrCounts) {
         const lowerPartial = partial.toLowerCase();
         const sortedAttrs = [...attrCounts.entries()].sort((a, b) => b[1] - a[1]);
         for (const [attrName, count] of sortedAttrs) {
           if (partial && !attrName.toLowerCase().startsWith(lowerPartial)) continue;
+          suggestedAttrNames.add(attrName);
           valueItems.push({
             label: attrName,
             kind: CompletionItemKind.Property,
             detail: `Used ${count} time${count === 1 ? "" : "s"} on '${kindName}' in workspace`,
+            textEdit: { range, newText: `${attrName}="\${1:value}"` },
+            insertTextFormat: InsertTextFormat.Snippet,
+          });
+        }
+      }
+
+      // Schema-driven attr-name suggestions, unioned with the above.
+      const schema = getSchemaForDocument(index, uri);
+      const elementSchema = schema?.elements.get(kindName);
+      if (elementSchema) {
+        const lowerPartial = partial.toLowerCase();
+        for (const [attrName, attrSchema] of elementSchema.attrs) {
+          if (suggestedAttrNames.has(attrName)) continue;
+          if (partial && !attrName.toLowerCase().startsWith(lowerPartial)) continue;
+          valueItems.push({
+            label: attrName,
+            kind: CompletionItemKind.Property,
+            detail: `${attrSchema.required ? "Required" : "Optional"} ${attrSchema.type} attr (schema)`,
             textEdit: { range, newText: `${attrName}="\${1:value}"` },
             insertTextFormat: InsertTextFormat.Snippet,
           });
@@ -820,7 +919,9 @@ export function computeCompletions(
     };
     // Suggest kinds already used elsewhere in the workspace, most frequent first.
     const sortedKinds = [...kindCounts.entries()].sort((a, b) => b[1] - a[1]);
+    const suggestedKinds = new Set<string>();
     for (const [kindName, count] of sortedKinds) {
+      suggestedKinds.add(kindName);
       items.push({
         label: kindName,
         kind: CompletionItemKind.Keyword,
@@ -832,6 +933,35 @@ export function computeCompletions(
         insertTextFormat: InsertTextFormat.PlainText,
       });
     }
+
+    // Schema-driven kind suggestions -- unioned with the workspace-derived
+    // ones above, never replacing them. Scoped to whatever child kinds are
+    // actually allowed at this depth per the bound schema (document roots
+    // at depth 0, or the enclosing statement's declared children otherwise).
+    const schema = getSchemaForDocument(index, uri);
+    if (schema) {
+      const currentDepth = Math.round(leadingWhitespaceLen / INDENT_UNIT);
+      const parentKind = findEnclosingKind(doc, position, currentDepth);
+      const allowedChildren: Map<string, ChildRef> | undefined =
+        currentDepth === 0 ? schema.roots : schema.elements.get(parentKind ?? "")?.children;
+      if (allowedChildren) {
+        for (const kindName of allowedChildren.keys()) {
+          if (suggestedKinds.has(kindName)) continue;
+          suggestedKinds.add(kindName);
+          items.push({
+            label: kindName,
+            kind: CompletionItemKind.Keyword,
+            detail:
+              currentDepth === 0
+                ? "Allowed at document root (schema)"
+                : `Allowed under '${parentKind}' (schema)`,
+            textEdit: { range: replaceRange, newText: kindName },
+            insertTextFormat: InsertTextFormat.PlainText,
+          });
+        }
+      }
+    }
+
     return items;
   }
 
@@ -840,24 +970,47 @@ export function computeCompletions(
   const stmt = index.getStatementAtPosition(uri, position);
   if (stmt) {
     const attrCounts = attrsByKind.get(stmt.kind);
-    if (attrCounts) {
-      const lastSpaceIdx = prefix.lastIndexOf(" ");
-      const partialStart = lastSpaceIdx + 1;
-      const partial = prefix.slice(partialStart);
-      const lowerPartial = partial.toLowerCase();
-      const replaceRange = {
-        start: { line: position.line, character: partialStart },
-        end: position,
-      };
+    const lastSpaceIdx = prefix.lastIndexOf(" ");
+    const partialStart = lastSpaceIdx + 1;
+    const partial = prefix.slice(partialStart);
+    const lowerPartial = partial.toLowerCase();
+    const replaceRange = {
+      start: { line: position.line, character: partialStart },
+      end: position,
+    };
+    const suggestedAttrs = new Set<string>();
 
+    if (attrCounts) {
       const sortedAttrs = [...attrCounts.entries()].sort((a, b) => b[1] - a[1]);
       for (const [attrName, count] of sortedAttrs) {
         if (stmt.attrs[attrName]) continue;
         if (partial && !attrName.toLowerCase().startsWith(lowerPartial)) continue;
+        suggestedAttrs.add(attrName);
         items.push({
           label: attrName,
           kind: CompletionItemKind.Property,
           detail: `Used ${count} time${count === 1 ? "" : "s"} on '${stmt.kind}' in workspace`,
+          textEdit: {
+            range: replaceRange,
+            newText: `${attrName}="\${1:value}"`,
+          },
+          insertTextFormat: InsertTextFormat.Snippet,
+        });
+      }
+    }
+
+    // Schema-driven attr-name suggestions, unioned with the above.
+    const schema = getSchemaForDocument(index, uri);
+    const elementSchema = schema?.elements.get(stmt.kind);
+    if (elementSchema) {
+      for (const [attrName, attrSchema] of elementSchema.attrs) {
+        if (stmt.attrs[attrName]) continue;
+        if (suggestedAttrs.has(attrName)) continue;
+        if (partial && !attrName.toLowerCase().startsWith(lowerPartial)) continue;
+        items.push({
+          label: attrName,
+          kind: CompletionItemKind.Property,
+          detail: `${attrSchema.required ? "Required" : "Optional"} ${attrSchema.type} attr (schema)`,
           textEdit: {
             range: replaceRange,
             newText: `${attrName}="\${1:value}"`,

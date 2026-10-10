@@ -40,7 +40,7 @@ describe("resolveSchemaFor", () => {
 describe("!schema directive parsing (via resolver)", () => {
   it("resolves !schema to an absolute path and strips it from the parsed tree", () => {
     withTmpDir((dir) => {
-      writeFileSync(join(dir, "schema.inml"), "kind \"org\"\n", "utf8");
+      writeFileSync(join(dir, "schema.inml"), "element \"org\"\n", "utf8");
       const rootPath = join(dir, "root.inml");
       writeFileSync(rootPath, '!schema "./schema.inml"\norg name="Acme"\n', "utf8");
 
@@ -53,7 +53,7 @@ describe("!schema directive parsing (via resolver)", () => {
 
   it("also works through parseFileWithSources", () => {
     withTmpDir((dir) => {
-      writeFileSync(join(dir, "schema.inml"), "kind \"org\"\n", "utf8");
+      writeFileSync(join(dir, "schema.inml"), "element \"org\"\n", "utf8");
       const rootPath = join(dir, "root.inml");
       writeFileSync(rootPath, '!schema "./schema.inml"\norg name="Acme"\n', "utf8");
 

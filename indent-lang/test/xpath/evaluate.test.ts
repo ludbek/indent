@@ -112,6 +112,36 @@ describe("selectNodes", () => {
     expect(result).toHaveLength(2);
   });
 
+  describe("wildcard step name", () => {
+    it("'//*' matches every node in the tree (root + all descendants)", () => {
+      const result = selectNodes(roots, "//*");
+      // 1 org + 2 team + 2 service + 3 api + 1 endpoint = 9
+      expect(result).toHaveLength(9);
+    });
+
+    it("'/*' matches only top-level roots", () => {
+      const result = selectNodes(roots, "/*");
+      expect(result).toEqual(roots);
+    });
+
+    it("'/org/*' matches only direct children of a matched step", () => {
+      const result = selectNodes(roots, "/org/*");
+      expect(result.map((n) => n.kind)).toEqual(["team", "team"]);
+    });
+
+    it("combines a wildcard with a self-value predicate", () => {
+      const result = selectNodes(roots, '//*[.="Login"]');
+      expect(result.map((n) => n.kind)).toEqual(["api"]);
+    });
+
+    it("combines a wildcard with a positional index predicate", () => {
+      const result = selectNodes(roots, "//*[1]");
+      // 0-indexed, so this is the 2nd node in depth-first pre-order
+      // across the whole tree (the `*` kind-match is universal).
+      expect(result).toHaveLength(1);
+    });
+  });
+
   describe("attribute predicates", () => {
     it("filters by exact string attribute value", () => {
       const result = selectNodes(roots, '//service[owner="ateam"]');

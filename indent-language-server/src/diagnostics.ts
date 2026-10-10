@@ -4,6 +4,7 @@ import {
   type Range,
 } from "vscode-languageserver";
 import type { WorkspaceIndex } from "./indexer.js";
+import { validateDocumentAgainstSchema } from "./schemaValidator.js";
 
 export function computeDiagnostics(
   uri: string,
@@ -86,8 +87,111 @@ export function computeDiagnostics(
       diagnostics.push({
         range: ref.range,
         message: `Unresolved reference '${ref.rawRef}' (${location})`,
-        severity: DiagnosticSeverity.Warning,
+        severity: DiagnosticSeverity.Error,
         source: "indent",
+      });
+    }
+  }
+
+  // 5. Double-usage hard error: a schema-classified file cannot also be
+  // pulled in via !include as ordinary content.
+  for (const link of index.includeLinks) {
+    if (link.sourceUri === uri && link.invalidIncludeOfSchemaFile) {
+      diagnostics.push({
+        range: link.range,
+        message: `Cannot !include '${link.rawPath}' -- it is a schema definition file and must be bound with !schema instead`,
+        severity: DiagnosticSeverity.Error,
+        source: "indent-schema",
+      });
+    }
+  }
+
+  // 6. Schema-directive misuse: placement rules the LSP enforces itself
+  // since it never runs indent-lang's resolver.ts. Every `!schema`
+  // occurrence is checked, not just the one that ends up bound.
+  const schemaStatements = doc.allStatements.filter((s) => s.isSchema);
+  for (let i = 0; i < schemaStatements.length; i++) {
+    const stmt = schemaStatements[i];
+    const isFirstRootStatement = doc.roots.length > 0 && doc.roots[0].id === stmt.id;
+
+    if (i > 0) {
+      diagnostics.push({
+        range: stmt.kindRange,
+        message: "!schema may only appear once per file",
+        severity: DiagnosticSeverity.Error,
+        source: "indent-schema",
+      });
+      continue;
+    }
+    if (stmt.depth !== 0 || !isFirstRootStatement) {
+      diagnostics.push({
+        range: stmt.kindRange,
+        message: "!schema must be the first statement in the file",
+        severity: DiagnosticSeverity.Error,
+        source: "indent-schema",
+      });
+    }
+    if (Object.keys(stmt.attrs).length > 0) {
+      diagnostics.push({
+        range: stmt.kindRange,
+        message: "!schema does not accept attributes",
+        severity: DiagnosticSeverity.Error,
+        source: "indent-schema",
+      });
+    }
+    if (!stmt.value || stmt.value.valueType !== "string") {
+      diagnostics.push({
+        range: stmt.kindRange,
+        message: "!schema requires a quoted string path",
+        severity: DiagnosticSeverity.Error,
+        source: "indent-schema",
+      });
+    }
+  }
+
+  // 7. The resolved schema binding (if any) must point at a valid schema file.
+  const binding = index.schemaBindingByUri.get(uri);
+  if (binding) {
+    if (!binding.exists) {
+      diagnostics.push({
+        range: binding.range,
+        message: `Linked schema file does not exist: '${binding.rawPath}'`,
+        severity: DiagnosticSeverity.Error,
+        source: "indent-schema",
+      });
+    } else if (!binding.isValidSchemaFile) {
+      diagnostics.push({
+        range: binding.range,
+        message: `'${binding.rawPath}' is not a valid schema file`,
+        severity: DiagnosticSeverity.Error,
+        source: "indent-schema",
+      });
+    } else {
+      // 8. Schema validation: the binding resolved to a parsed schema --
+      // validate this document's own tree against it.
+      const schemaEntry = binding.resolvedUri ? index.schemaFiles.get(binding.resolvedUri) : undefined;
+      if (schemaEntry?.schema) {
+        diagnostics.push(...validateDocumentAgainstSchema(doc, schemaEntry.schema, index));
+      }
+    }
+  }
+
+  // 9. Schema file's own grammar diagnostics: when this document is itself
+  // schema-classified and failed to parse as schema grammar.
+  if (index.schemaClassifiedUris.has(uri)) {
+    const entry = index.schemaFiles.get(uri);
+    if (entry?.parseError) {
+      const range: Range =
+        entry.parseErrorRange ??
+        doc.roots[0]?.kindRange ?? {
+          start: { line: 0, character: 0 },
+          end: { line: 0, character: 1 },
+        };
+      diagnostics.push({
+        range,
+        message: entry.parseError,
+        severity: DiagnosticSeverity.Error,
+        source: "indent-schema",
       });
     }
   }

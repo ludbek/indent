@@ -4,9 +4,10 @@ export type {
   AttrSchema,
   AttrType,
   ChildRef,
-  KindSchema,
+  ElementSchema,
   Schema,
   SchemaDiagnostic,
+  ValueSchema,
 } from "./types.js";
 export { SchemaDefinitionError } from "./types.js";
 export {

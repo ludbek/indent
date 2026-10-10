@@ -1,15 +1,17 @@
 import { readFileSync } from "node:fs";
 import { parse } from "../parser.js";
 import { selectNodes } from "../xpath/evaluate.js";
+import { parseXPath } from "../xpath/parser.js";
 import type { XPathNode } from "../xpath/types.js";
 import type { IndentNode, RefValue } from "../types.js";
 import {
   AttrSchema,
   AttrType,
   ChildRef,
-  KindSchema,
+  ElementSchema,
   Schema,
   SchemaDefinitionError,
+  ValueSchema,
 } from "./types.js";
 
 const ATTR_TYPES: readonly AttrType[] = ["string", "number", "boolean", "ref"];
@@ -24,9 +26,66 @@ function isRefValue(value: unknown): value is RefValue {
 }
 
 /**
- * Parses cardinality attrs (`minCount`/`maxCount`) off a `kind` child
- * reference line. Both default when omitted: `minCount` to `0`, `maxCount`
- * to `Infinity` (unbounded).
+ * Resolves an xpath self-axis ref (e.g. `//element[.="team"]`) against the
+ * schema's own root nodes to the declared element name(s) it points at, as
+ * a node-set-style array -- matching standard xpath semantics, where a
+ * query always yields a collection regardless of cardinality (0, 1, or
+ * many). Shared by child-element references, and by `attr`/`value` `type=`
+ * ref-constraints.
+ *
+ * Matching more than one declared element is only permitted when the raw
+ * xpath contains a wildcard (`*`) step *and* the caller opts in via
+ * `allowMultiple` (set for `type=` ref-constraints, which can model a set
+ * of allowed target kinds; not set for child-element references, which
+ * only ever name a single element to nest). Otherwise >1 match is treated
+ * as a likely authoring mistake and rejected as ambiguous.
+ */
+function resolveElementRef(
+  schemaRoots: IndentNode[],
+  raw: string,
+  describeWhat: string,
+  options?: { allowMultiple?: boolean },
+): string[] {
+  const allowMultiple = options?.allowMultiple ?? false;
+
+  let parsed;
+  try {
+    parsed = parseXPath(raw);
+  } catch {
+    // An unparsable xpath (e.g. a typo'd `type=//*`) is reported the same
+    // way as a syntactically valid ref that resolves to nothing -- this
+    // package has no line/position info to anchor a more specific error
+    // to (see `SchemaDefinitionError`'s comment), so the message is all
+    // that distinguishes it; the CST-based mirror in the language server's
+    // `schemaDefParser.ts` anchors this same failure to a precise range.
+    throw new SchemaDefinitionError(`could not resolve ${describeWhat} '${raw}' to a declared element`);
+  }
+  const isWildcard = parsed.steps.some((step) => step.name === "*");
+
+  // `selectNodes` is generic over `XPathNode`, whose `value` type doesn't
+  // include `RefValue` (xpath stays decoupled from Indent's concrete value
+  // typing). Schema files only ever self-match against string-valued
+  // `element "name"` definitions, so this cast is safe here.
+  const matches = selectNodes(schemaRoots as unknown as XPathNode[], parsed) as unknown as IndentNode[];
+  const defMatches = matches.filter((m) => m.kind === "element" && typeof m.value === "string");
+  const names = [...new Set(defMatches.map((m) => m.value as string))];
+
+  if (names.length === 0) {
+    throw new SchemaDefinitionError(`could not resolve ${describeWhat} '${raw}' to a declared element`);
+  }
+  if (names.length > 1 && !(allowMultiple && isWildcard)) {
+    throw new SchemaDefinitionError(
+      `${describeWhat} '${raw}' is ambiguous -- it matches ${names.length} declared elements`,
+    );
+  }
+
+  return names;
+}
+
+/**
+ * Parses cardinality attrs (`minCount`/`maxCount`) off an `element` child
+ * reference/definition line. Both default when omitted: `minCount` to `0`,
+ * `maxCount` to `Infinity` (unbounded).
  */
 function parseCardinality(
   node: IndentNode,
@@ -64,7 +123,7 @@ function parseCardinality(
   for (const key of Object.keys(node.attrs)) {
     if (!allowedKeys.has(key)) {
       throw new SchemaDefinitionError(
-        `unexpected attribute '${key}' on a child 'kind' reference -- only 'minCount'/'maxCount' are allowed`,
+        `unexpected attribute '${key}' on a child 'element' reference -- only 'minCount'/'maxCount' are allowed`,
       );
     }
   }
@@ -72,19 +131,41 @@ function parseCardinality(
   return { minCount, maxCount };
 }
 
-function parseAttrDef(node: IndentNode): AttrSchema {
+/**
+ * Resolves a `type=` value common to both `attr` and `value` declarations:
+ * either one of the plain `AttrType` string literals, or an xpath self-axis
+ * ref (e.g. `type=//element[.="team"]`) constraining a `"ref"`-typed
+ * attribute/value to resolve (in the document being validated) to a node
+ * of one of the declared element(s) the ref matches here (a set, when the
+ * ref's a wildcard matching several; a singleton array otherwise).
+ */
+function parseTypeDef(
+  schemaRoots: IndentNode[],
+  rawType: unknown,
+  describeWhat: string,
+): { type: AttrType; refElement?: string[] } {
+  if (typeof rawType === "string" && ATTR_TYPES.includes(rawType as AttrType)) {
+    return { type: rawType as AttrType };
+  }
+  if (isRefValue(rawType)) {
+    const refElement = resolveElementRef(schemaRoots, rawType.raw, `${describeWhat} type ref`, {
+      allowMultiple: true,
+    });
+    return { type: "ref", refElement };
+  }
+  throw new SchemaDefinitionError(
+    `${describeWhat} requires a 'type=' attribute, one of: ${ATTR_TYPES.join(", ")}, or an xpath self-axis ref (e.g. 'type=//element[.="name"]')`,
+  );
+}
+
+function parseAttrDef(schemaRoots: IndentNode[], node: IndentNode): AttrSchema {
   if (typeof node.value !== "string") {
     throw new SchemaDefinitionError(
       `'attr' requires a quoted string name, e.g. 'attr "name" type="string"'`,
     );
   }
 
-  const rawType = node.attrs.type;
-  if (typeof rawType !== "string" || !ATTR_TYPES.includes(rawType as AttrType)) {
-    throw new SchemaDefinitionError(
-      `attr '${node.value}' requires a 'type=' attribute, one of: ${ATTR_TYPES.join(", ")}`,
-    );
-  }
+  const { type, refElement } = parseTypeDef(schemaRoots, node.attrs.type, `attr '${node.value}'`);
 
   let required = false;
   if ("required" in node.attrs) {
@@ -106,119 +187,188 @@ function parseAttrDef(node: IndentNode): AttrSchema {
     }
   }
 
-  return { name: node.value, type: rawType as AttrType, required };
+  return { name: node.value, type, required, ...(refElement ? { refElement } : {}) };
+}
+
+function parseValueDef(schemaRoots: IndentNode[], node: IndentNode, elementName: string): ValueSchema {
+  if (node.value !== undefined) {
+    throw new SchemaDefinitionError(
+      `'value' takes no positional name, e.g. 'value type="string"' -- got a positional value on element '${elementName}'`,
+    );
+  }
+
+  const { type, refElement } = parseTypeDef(
+    schemaRoots,
+    node.attrs.type,
+    `'value' on element '${elementName}'`,
+  );
+
+  let required = false;
+  if ("required" in node.attrs) {
+    const rawRequired = node.attrs.required;
+    if (typeof rawRequired !== "boolean") {
+      throw new SchemaDefinitionError(
+        `'value' on element '${elementName}' 'required=' must be a boolean (true/false)`,
+      );
+    }
+    required = rawRequired;
+  }
+
+  const allowedKeys = new Set(["type", "required"]);
+  for (const key of Object.keys(node.attrs)) {
+    if (!allowedKeys.has(key)) {
+      throw new SchemaDefinitionError(
+        `unexpected attribute '${key}' on 'value' (element '${elementName}') -- only 'type'/'required' are allowed`,
+      );
+    }
+  }
+
+  return { type, required, ...(refElement ? { refElement } : {}) };
 }
 
 /**
  * Parses a schema definition written in Indent syntax itself. Top-level
- * `kind "name"` lines are canonical kind definitions; their `attr`/`kind`
- * children declare allowed attributes and child kinds respectively.
+ * `element "name"` lines are canonical element definitions; their children
+ * declare:
  *
- * A nested `kind //kind[.="name"] minCount=.. maxCount=..` line is a
- * *reference* to a top-level definition (resolved via `indent-lang`'s xpath module's
- * self-axis predicate against the schema's own tree), not a redefinition --
- * this is what allows self-referential kinds (e.g. `container` nested in
- * `container`) and sharing one kind under multiple parents with different
- * cardinality.
+ * - `attr "name" type="..."` -- an allowed attribute. `type=` is one of the
+ *   plain `string`/`number`/`boolean`/`ref` literals, or an xpath self-axis
+ *   ref (e.g. `type=//element[.="team"]`) constraining a ref-typed
+ *   attribute to resolve to a node of that specific declared element.
+ * - `value type="..."` -- a schema for the element's own positional value,
+ *   following the same `type=` rules as `attr` (including ref-target
+ *   constraints). At most one per element definition.
+ * - `element` children, declaring allowed child elements, either as:
+ *   - An **inline definition**: a nested `element "name"` line with a plain
+ *     quoted string value. This both declares a brand-new element
+ *     (registered globally, exactly as if it had been written at the top
+ *     level) *and* wires it up as an allowed child of the enclosing
+ *     element, at the cardinality declared on this line. Inline
+ *     definitions may themselves nest further inline definitions, to any
+ *     depth.
+ *   - A **reference**: `element //element[.="name"]`, resolved via
+ *     `indent-lang`'s xpath module's self-axis predicate against the
+ *     schema's own tree. This points at an element definition declared
+ *     elsewhere (top-level or nested) without redefining it -- required
+ *     for self-referential elements (e.g. `container` nested in
+ *     `container`, which can't be expressed inline since the name wouldn't
+ *     exist yet) and for sharing one element under multiple parents with
+ *     different cardinality.
+ *
+ * Every element name must be defined exactly once, whether at the top
+ * level or inline under some parent; every other mention of that name must
+ * use the ref form.
  */
 export function parseSchema(source: string): Schema {
   const { roots: schemaRoots } = parse(source);
 
-  const kinds = new Map<string, KindSchema>();
-  const defNodes: IndentNode[] = [];
+  const elements = new Map<string, ElementSchema>();
+  const defNodes = new Map<string, IndentNode>();
+  const topLevelNames: string[] = [];
 
-  // Pass 1: collect canonical top-level kind definitions.
+  function registerDef(node: IndentNode, name: string): void {
+    if (elements.has(name)) {
+      throw new SchemaDefinitionError(`duplicate element definition '${name}'`);
+    }
+    elements.set(name, { name, attrs: new Map(), children: new Map() });
+    defNodes.set(name, node);
+
+    // Recurse into this definition's children to discover further inline
+    // nested definitions (refs are left alone -- they don't define anything
+    // new, they're resolved in the fill pass below).
+    for (const child of node.children) {
+      if (child.kind === "element" && typeof child.value === "string") {
+        registerDef(child, child.value);
+      }
+    }
+  }
+
+  // Pass 1: collect every element definition (top-level and inline-nested),
+  // so forward/cross references resolve regardless of declaration order or
+  // nesting depth.
   for (const node of schemaRoots) {
-    if (node.kind !== "kind") {
+    if (node.kind !== "element") {
       throw new SchemaDefinitionError(
-        `schema root statements must be 'kind' definitions, got '${node.kind}'`,
+        `schema root statements must be 'element' definitions, got '${node.kind}'`,
       );
     }
     if (typeof node.value !== "string") {
       throw new SchemaDefinitionError(
-        `top-level 'kind' definition requires a quoted string name, e.g. 'kind "name"'`,
+        `top-level 'element' definition requires a quoted string name, e.g. 'element "name"'`,
       );
     }
-    if (kinds.has(node.value)) {
-      throw new SchemaDefinitionError(`duplicate top-level kind definition '${node.value}'`);
-    }
-    kinds.set(node.value, { name: node.value, attrs: new Map(), children: new Map() });
-    defNodes.push(node);
+    registerDef(node, node.value);
+    topLevelNames.push(node.value);
   }
 
-  // Pass 2: fill in attrs/children, now that every top-level kind is known
-  // (so forward references resolve regardless of declaration order).
-  for (const defNode of defNodes) {
-    const name = defNode.value as string;
-    const kindSchema = kinds.get(name)!;
+  // Pass 2: fill in attrs/value/children for every definition, now that
+  // every element name (top-level or nested) is known.
+  for (const [name, defNode] of defNodes) {
+    const elementSchema = elements.get(name)!;
 
     for (const child of defNode.children) {
       if (child.kind === "attr") {
-        const attrSchema = parseAttrDef(child);
-        if (kindSchema.attrs.has(attrSchema.name)) {
+        const attrSchema = parseAttrDef(schemaRoots, child);
+        if (elementSchema.attrs.has(attrSchema.name)) {
           throw new SchemaDefinitionError(
-            `duplicate attr '${attrSchema.name}' on kind '${name}'`,
+            `duplicate attr '${attrSchema.name}' on element '${name}'`,
           );
         }
-        kindSchema.attrs.set(attrSchema.name, attrSchema);
+        elementSchema.attrs.set(attrSchema.name, attrSchema);
         continue;
       }
 
-      if (child.kind === "kind") {
-        if (!isRefValue(child.value)) {
+      if (child.kind === "value") {
+        if (elementSchema.value) {
+          throw new SchemaDefinitionError(`duplicate 'value' declaration on element '${name}'`);
+        }
+        elementSchema.value = parseValueDef(schemaRoots, child, name);
+        continue;
+      }
+
+      if (child.kind === "element") {
+        let resolvedName: string;
+
+        if (typeof child.value === "string") {
+          // Inline definition -- already registered in pass 1 under its own
+          // name; just wire it up as a child here.
+          resolvedName = child.value;
+        } else if (isRefValue(child.value)) {
+          [resolvedName] = resolveElementRef(schemaRoots, child.value.raw, "child element reference");
+        } else {
           throw new SchemaDefinitionError(
-            `a nested 'kind' line must reference a declared kind via an xpath self-axis ref, e.g. 'kind //kind[.="name"]', got a plain value instead`,
+            `a nested 'element' line must either inline-define a new element (e.g. 'element "name"') or reference a declared element via an xpath self-axis ref (e.g. 'element //element[.="name"]'), got a plain value instead`,
           );
         }
 
-        // `selectNodes` is generic over `XPathNode`, whose `value` type
-        // doesn't include `RefValue` (xpath stays decoupled from Indent's
-        // concrete value typing). Schema files only ever self-match against
-        // the string-valued top-level `kind "name"` definitions, so this
-        // cast is safe here.
-        const matches = selectNodes(schemaRoots as unknown as XPathNode[], child.value.raw) as unknown as IndentNode[];
-        const defMatches = matches.filter(
-          (m) => m.kind === "kind" && typeof m.value === "string",
-        );
-
-        if (defMatches.length === 0) {
+        if (elementSchema.children.has(resolvedName)) {
           throw new SchemaDefinitionError(
-            `could not resolve child kind reference '${child.value.raw}' to a declared kind`,
-          );
-        }
-        if (defMatches.length > 1) {
-          throw new SchemaDefinitionError(
-            `child kind reference '${child.value.raw}' is ambiguous -- it matches ${defMatches.length} declared kinds`,
-          );
-        }
-
-        const resolvedName = defMatches[0].value as string;
-        if (kindSchema.children.has(resolvedName)) {
-          throw new SchemaDefinitionError(
-            `duplicate child kind reference to '${resolvedName}' on kind '${name}'`,
+            `duplicate child element reference to '${resolvedName}' on element '${name}'`,
           );
         }
 
         const { minCount, maxCount } = parseCardinality(child);
-        const childRef: ChildRef = { kind: resolvedName, minCount, maxCount };
-        kindSchema.children.set(resolvedName, childRef);
+        const childRef: ChildRef = { element: resolvedName, minCount, maxCount };
+        elementSchema.children.set(resolvedName, childRef);
         continue;
       }
 
       throw new SchemaDefinitionError(
-        `expected 'attr' or 'kind' inside a kind definition, got '${child.kind}'`,
+        `expected 'attr', 'value', or 'element' inside an element definition, got '${child.kind}'`,
       );
     }
   }
 
-  // Every top-level kind definition is implicitly allowed at the document
-  // root, with the default (unbounded) cardinality.
+  // Every top-level element definition is implicitly allowed at the
+  // document root, with the default (unbounded) cardinality. Inline-nested
+  // definitions are NOT implicitly allowed at the root -- only explicitly
+  // declared top-level ones are.
   const roots = new Map<string, ChildRef>();
-  for (const name of kinds.keys()) {
-    roots.set(name, { kind: name, minCount: 0, maxCount: Infinity });
+  for (const name of topLevelNames) {
+    roots.set(name, { element: name, minCount: 0, maxCount: Infinity });
   }
 
-  return { kinds, roots };
+  return { elements, roots };
 }
 
 /** Reads and parses a schema definition file from disk. */

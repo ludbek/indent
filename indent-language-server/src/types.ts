@@ -32,6 +32,8 @@ export interface AstStatement {
   value?: AstValue;
   isInclude: boolean;
   includePath?: string;
+  isSchema: boolean;
+  schemaPath?: string;
   attrs: Record<string, AstAttribute>;
   parent?: AstStatement;
   children: AstStatement[];
@@ -66,6 +68,16 @@ export interface IndexedNode {
   parentPath?: string;
   childPaths: string[];
   statement: AstStatement;
+}
+
+export interface SchemaLink {
+  sourceUri: string;
+  rawPath: string;
+  resolvedFsPath: string;
+  resolvedUri?: string;
+  range: Range; // range of the !schema statement's value
+  exists: boolean;
+  isValidSchemaFile: boolean; // target exists, is suffix-classified, and parses as valid schema grammar
 }
 
 export interface RefReference {

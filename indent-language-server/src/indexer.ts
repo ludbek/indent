@@ -4,13 +4,16 @@ import { URI } from "vscode-uri";
 import type { Range } from "vscode-languageserver";
 import { CstParser } from "./cst.js";
 import { parseXPath, selectNodes } from "indent-lang/xpath";
+import { isSchemaDefinitionFile, type Schema } from "indent-lang/schema";
 import { buildXPathForest } from "./xpathTree.js";
+import { parseSchemaFromCst, SchemaCstDefinitionError } from "./schemaDefParser.js";
 import { findAllInmlFiles, findProjectRoot } from "./project.js";
 import type {
   AstDocument,
   AstStatement,
   IndexedNode,
   RefReference,
+  SchemaLink,
 } from "./types.js";
 
 export function uriToFsPath(uri: string): string {
@@ -33,7 +36,27 @@ export interface IncludeLink {
   range: Range;
   exists: boolean;
   isCircular?: boolean;
+  /**
+   * True when the resolved include target is itself classified as a schema
+   * definition file (`.schema.inml`). Schema files are not valid `!include`
+   * targets -- a schema is bound via `!schema "path"`, never spliced in as
+   * ordinary content. Surfaced as a hard-error diagnostic.
+   */
+  invalidIncludeOfSchemaFile?: boolean;
 }
+
+export interface SchemaFileEntry {
+  schema?: Schema;
+  parseError?: string;
+  /**
+   * Precise range of the parse error within the schema file, when available
+   * (always set for `SchemaCstDefinitionError`; absent only for truly
+   * unexpected error types, where callers should fall back to the first
+   * root statement's range).
+   */
+  parseErrorRange?: Range;
+}
+
 
 export class WorkspaceIndex {
   public parser!: CstParser;
@@ -44,6 +67,27 @@ export class WorkspaceIndex {
   public refReferences: RefReference[] = [];
   public inboundReferences = new Map<string, RefReference[]>();
   public includeLinks: IncludeLink[] = [];
+  /**
+   * URIs of documents classified as schema definition files (`.schema.inml`
+   * suffix). Classification is purely name-based -- no cross-file reference
+   * discovery. Schema-classified documents are excluded from the ordinary
+   * `rootNodes`/`nodesByPath` tree and ref resolution, and are instead
+   * parsed as schema grammar (see `schemaFiles`).
+   */
+  public schemaClassifiedUris: Set<string> = new Set();
+  /** Parsed `Schema` (or parse error) per schema-classified document uri. */
+  public schemaFiles: Map<string, SchemaFileEntry> = new Map();
+  /** Every `!schema "path"` occurrence across the workspace, resolved. */
+  public schemaLinks: SchemaLink[] = [];
+  /**
+   * The single schema binding in effect for a document, keyed by that
+   * document's own uri -- i.e. the `!schema` occurrence that satisfies the
+   * placement rules (first statement, depth 0, no attrs, quoted string,
+   * only once). Other `!schema` occurrences in the same file are reported
+   * as misuse diagnostics instead of contributing a binding.
+   */
+  public schemaBindingByUri: Map<string, SchemaLink> = new Map();
+
   public workspaceRoots: string[] = [];
   /**
    * Discovered project roots (see `findProjectRoot`) mapped to the set of
@@ -340,6 +384,31 @@ export class WorkspaceIndex {
     this.refReferences = [];
     this.inboundReferences.clear();
     this.includeLinks = [];
+    this.schemaClassifiedUris.clear();
+    this.schemaFiles.clear();
+    this.schemaLinks = [];
+    this.schemaBindingByUri.clear();
+
+    // 0. Classify schema definition files by naming convention
+    // (`.schema.inml`), and parse each as schema grammar. Classification is
+    // purely local/name-based -- a file doesn't need to be linked from
+    // anywhere to be treated as a schema file.
+    for (const doc of this.documents.values()) {
+      const docFsPath = uriToFsPath(doc.uri);
+      if (!isSchemaDefinitionFile(docFsPath)) continue;
+      this.schemaClassifiedUris.add(doc.uri);
+      try {
+        const schema = parseSchemaFromCst(doc.roots);
+        this.schemaFiles.set(doc.uri, { schema });
+      } catch (err) {
+        const message =
+          err instanceof SchemaCstDefinitionError || err instanceof Error
+            ? err.message
+            : String(err);
+        const parseErrorRange = err instanceof SchemaCstDefinitionError ? err.range : undefined;
+        this.schemaFiles.set(doc.uri, { parseError: message, parseErrorRange });
+      }
+    }
 
     // 1. Build include links and check for existence / cycles
     for (const doc of this.documents.values()) {
@@ -360,7 +429,42 @@ export class WorkspaceIndex {
             resolvedUri,
             range: stmt.kindRange,
             exists,
+            invalidIncludeOfSchemaFile:
+              exists && this.schemaClassifiedUris.has(resolvedUri),
           });
+        }
+
+        if (stmt.isSchema && stmt.schemaPath) {
+          const raw = stmt.schemaPath;
+          const targetFsPath = resolve(docDir, raw);
+          const exists = existsSync(targetFsPath);
+          const resolvedUri = fsPathToUri(targetFsPath);
+          const targetEntry = this.schemaFiles.get(resolvedUri);
+          const isValidSchemaFile =
+            exists &&
+            this.schemaClassifiedUris.has(resolvedUri) &&
+            !!targetEntry?.schema &&
+            !targetEntry?.parseError;
+
+          const link: SchemaLink = {
+            sourceUri: doc.uri,
+            rawPath: raw,
+            resolvedFsPath: targetFsPath,
+            resolvedUri,
+            range: stmt.value?.range ?? stmt.kindRange,
+            exists,
+            isValidSchemaFile,
+          };
+          this.schemaLinks.push(link);
+
+          // The binding in effect is the occurrence satisfying placement
+          // rules: first statement in the file, depth 0. Other occurrences
+          // are left to diagnostics.ts to flag as misuse.
+          const isFirstRootStatement =
+            doc.roots.length > 0 && doc.roots[0].id === stmt.id;
+          if (isFirstRootStatement && stmt.depth === 0 && !this.schemaBindingByUri.has(doc.uri)) {
+            this.schemaBindingByUri.set(doc.uri, link);
+          }
         }
       }
     }
@@ -371,6 +475,11 @@ export class WorkspaceIndex {
     // with the first attribute that yields uniqueness, e.g. /org[name="Acme"],
     // falling back to positional index e.g. /org[0] when no attribute suffices.
     for (const doc of this.documents.values()) {
+      // Schema-classified documents are interpreted only via the schema
+      // parser/grammar (see pass 0) -- they never contribute to the
+      // ordinary node tree, ref resolution, or completion stats.
+      if (this.schemaClassifiedUris.has(doc.uri)) continue;
+
       const buildChildren = (stmts: AstStatement[], parentPath?: string) => {
         // Group siblings by kind to detect collisions
         const kindGroups = new Map<string, AstStatement[]>();
@@ -412,8 +521,47 @@ export class WorkspaceIndex {
       }
     }
 
-    // 3. Resolve refs (both attribute values and a node's own positional value)
-    const refForest = buildXPathForest(this.rootNodes, this.nodesByPath);
+    // 3. Resolve refs (both attribute values and a node's own positional value).
+    //
+    // Refs only resolve within the document they're written in, plus any
+    // documents transitively reachable via that document's own forward
+    // `!include` chain -- NOT against every `.inml` file the workspace scan
+    // happens to discover. Each document gets its own xpath forest scoped to
+    // {itself} union {its transitive includes}, so an unrelated file sitting
+    // in the same project folder (never opened, never included) can't
+    // silently satisfy a ref that should otherwise be flagged unresolved.
+    const rootNodesByUri = new Map<string, IndexedNode[]>();
+    for (const node of this.rootNodes) {
+      const list = rootNodesByUri.get(node.uri) ?? [];
+      list.push(node);
+      rootNodesByUri.set(node.uri, list);
+    }
+
+    const includeLinksBySourceUri = new Map<string, IncludeLink[]>();
+    for (const link of this.includeLinks) {
+      const list = includeLinksBySourceUri.get(link.sourceUri) ?? [];
+      list.push(link);
+      includeLinksBySourceUri.set(link.sourceUri, list);
+    }
+
+    // Forward-only transitive closure of a document's own `!include`s.
+    // Cycle-safe via the `visited` set (two files including each other, or a
+    // longer include cycle, simply stops expanding once every reachable
+    // document has been seen).
+    const visibleDocUris = (startUri: string): Set<string> => {
+      const visited = new Set<string>([startUri]);
+      const queue = [startUri];
+      while (queue.length > 0) {
+        const current = queue.shift()!;
+        for (const link of includeLinksBySourceUri.get(current) ?? []) {
+          if (!link.exists || !link.resolvedUri || link.invalidIncludeOfSchemaFile) continue;
+          if (visited.has(link.resolvedUri)) continue;
+          visited.add(link.resolvedUri);
+          queue.push(link.resolvedUri);
+        }
+      }
+      return visited;
+    };
 
     // The CST classifies any non-number/boolean unquoted value as "ref"
     // type, including incomplete text a user is still typing (e.g. "/org/"
@@ -421,7 +569,7 @@ export class WorkspaceIndex {
     // incomplete/invalid input -- treat that as simply "unresolved" (empty
     // target list) rather than crashing the whole index rebuild, so live
     // editing stays resilient.
-    const resolveRefTargets = (raw: string): string[] => {
+    const resolveRefTargetsIn = (refForest: ReturnType<typeof buildXPathForest>) => (raw: string): string[] => {
       try {
         const parsed = parseXPath(raw);
         const targets = selectNodes(refForest, parsed);
@@ -432,6 +580,13 @@ export class WorkspaceIndex {
     };
 
     for (const doc of this.documents.values()) {
+      if (this.schemaClassifiedUris.has(doc.uri)) continue;
+
+      const visibleUris = visibleDocUris(doc.uri);
+      const visibleRootNodes = [...visibleUris].flatMap((uri) => rootNodesByUri.get(uri) ?? []);
+      const refForest = buildXPathForest(visibleRootNodes, this.nodesByPath);
+      const resolveRefTargets = resolveRefTargetsIn(refForest);
+
       for (const stmt of doc.allStatements) {
         const sourceNode = this.nodesById.get(stmt.id);
         const sourcePath = sourceNode?.canonicalPath ?? "";

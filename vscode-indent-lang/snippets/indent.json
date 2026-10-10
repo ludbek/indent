@@ -1,0 +1,7 @@
+{
+  "Schema directive": {
+    "prefix": "!schema",
+    "body": "!schema \"${1:schema-file.schema.inml}\"",
+    "description": "Bind this document to a schema definition file"
+  }
+}

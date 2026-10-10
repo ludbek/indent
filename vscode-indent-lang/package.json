@@ -46,6 +46,12 @@
         "path": "./syntaxes/indent.tmLanguage.json"
       }
     ],
+    "snippets": [
+      {
+        "language": "indent",
+        "path": "./snippets/indent.json"
+      }
+    ],
     "configurationDefaults": {
       "[indent]": {
         "editor.formatOnType": true
@@ -90,6 +96,6 @@
     "package": "node ./scripts/package.js",
     "publish:vsce": "node ./scripts/publish.js",
     "test:local": "node ./scripts/test-local.js",
-    "test": "npm run build && node test/continuation-indent.test.js && node test/insert-node-ref-contributions.test.js && node test/tmgrammar.test.js && node test/smoke-test.js && node test/smoke-test-file.js ../indent-lang/test/fixtures/sample.inml"
+    "test": "npm run build && node test/continuation-indent.test.js && node test/insert-node-ref-contributions.test.js && node test/tmgrammar.test.js && node test/smoke-test.js && node test/smoke-test-file.js ../indent-lang/test/fixtures/sample.inml && node test/smoke-test-file.js test/fixtures/with-schema.inml && node test/smoke-test-file.js test/fixtures/org.schema.inml"
   }
 }

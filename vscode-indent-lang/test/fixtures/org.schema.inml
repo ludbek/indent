@@ -1,0 +1,7 @@
+element "org"
+    attr "name" type="string" required=true
+    element //element[.="service"] minCount=1
+
+element "service"
+    attr "name" type="string" required=true
+    attr "enabled" type="boolean"

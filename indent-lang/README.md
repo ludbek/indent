@@ -168,48 +168,55 @@ property holding the original expression) on malformed or unsupported input.
 
 ## Schema (`indent-lang/schema`)
 
-Schemas declare which **kinds** may appear where, which **attributes** they
-carry, and **how many times** each child kind may repeat. Schemas are
-themselves written in Indent.
+Schemas declare which **elements** may appear where, which **attributes**
+they carry, and **how many times** each child element may repeat. Schemas
+are themselves written in Indent.
 
 ### Schema syntax
 
-A schema file (`*.schema.inml`) is a flat list of top-level `kind`
-definitions. Each definition may contain `attr` lines and `kind`
-*references* to other definitions.
+A schema file (`*.schema.inml`) is a list of `element` definitions. Each
+definition may contain `attr` lines and `element` children, which are
+either **inline nested definitions** or **references** to other
+definitions.
 
 ```
-kind "workspace"
+element "workspace"
     attr "name" type="string" required=true
-    kind //kind[.="person"]
-    kind //kind[.="softwareSystem"] minCount=1
+    element //element[.="person"]
+    element //element[.="softwareSystem"] minCount=1
 
-kind "person"
+element "person"
     attr "name" type="string" required=true
 
-kind "softwareSystem"
+element "softwareSystem"
     attr "name" type="string" required=true
-    kind //kind[.="container"]
-
-kind "container"
-    attr "name" type="string" required=true
-    attr "port" type="number"
-    kind //kind[.="container"]
+    element "container"
+        attr "name" type="string" required=true
+        attr "port" type="number"
+        element //element[.="container"]
 ```
 
-- Top-level `kind "name"` lines are **canonical definitions**. The name is a
-  quoted string. Duplicates are an error.
-- Nested `kind` lines are **references**, not redefinitions. The value is an
-  xpath ref (`//kind[.="name"]`) resolved against the schema's own root
-  nodes. Writing a plain quoted string there is an error.
+- Top-level `element "name"` lines are **canonical definitions**. The name
+  is a quoted string. Duplicates are an error.
+- A nested `element "name"` line with a plain quoted string is an **inline
+  definition**: it declares a brand-new element -- registered globally,
+  exactly as if written at the top level -- *and* wires it up as an allowed
+  child of the enclosing element at the cardinality declared on that line.
+  Inline definitions may nest further inline definitions, to any depth.
+- A nested `element //element[.="name"]` line is a **reference**, not a
+  redefinition: the value is an xpath ref resolved against the schema's own
+  root nodes, pointing at an element defined elsewhere (top-level or
+  inline-nested).
 
-  Why references instead of bare names? Because a kind can appear under many
-  parents with different cardinality, and can be self-referential
-  (`container` inside `container`). References point at one canonical
-  definition and carry only the local cardinality, so there is exactly one
-  place that defines a kind's shape.
-- Edge-style kinds work the same way:
-  `kind "->"` is referenced as `kind //kind[.="->"]`.
+  Why references in addition to inline definitions? Because an element can
+  appear under many parents with different cardinality, and can be
+  self-referential (`container` inside `container` -- which can't be
+  expressed inline, since the name wouldn't exist yet at that point).
+  References point at one canonical definition and carry only the local
+  cardinality, so there is exactly one place that defines an element's
+  shape; every other mention of that name must use the ref form.
+- Edge-style elements work the same way:
+  `element "->"` is referenced elsewhere as `element //element[.="->"]`.
 
 #### Attributes
 
@@ -219,10 +226,43 @@ attr "<name>" type="string|number|boolean|ref" [required=true|false]
 
 `type=` is mandatory; `required=` defaults to `false`.
 
+`type=` can also be an xpath self-axis ref instead of a plain literal,
+constraining a `ref`-typed attribute to point at a node of one specific
+declared element:
+
+```
+attr "team" type=//element[.="team"]
+```
+
+This resolves `type=` against the schema's own elements (same self-axis
+resolution as a child `element //element[.="name"]` reference) to record
+that the attribute's value isn't just *any* ref -- when validating a
+document, its target must resolve to a `team` element. Combine with
+`required=` as usual.
+
+#### Positional value
+
+An element's own positional value (e.g. `"Acme"` in `workspace "Acme"`) can
+be schema'd with a `value` line, following the same `type=` rules as `attr`
+(including the ref-target-kind constraint above):
+
+```
+element "team"
+    value type="string" required=true
+
+element "assignment"
+    value type=//element[.="team"]
+```
+
+At most one `value` line per element definition. `required=` defaults to
+`false`. If an element's schema does not declare a `value` line, that
+element's document nodes must not carry a positional value either (it's an
+error, like an undeclared attribute).
+
 #### Cardinality
 
 ```
-kind //kind[.="x"] minCount=1 maxCount=3
+element //element[.="x"] minCount=1 maxCount=3
 ```
 
 | Field | Default | Meaning |
@@ -236,8 +276,8 @@ collection-heavy, so requiring an explicit `maxCount` everywhere would be
 noise. Constraints: both must be integers, `minCount >= 0`,
 `maxCount >= 1`, `minCount <= maxCount`.
 
-Every top-level `kind` definition is implicitly allowed at the document
-root with the default cardinality.
+Every top-level `element` definition is implicitly allowed at the document
+root with the default cardinality. Inline-nested definitions are not.
 
 ### Validating
 
@@ -253,21 +293,24 @@ const schema = parseSchemaFile("./schemas/c4.schema.inml");
 const { roots } = parse(source);
 
 const diagnostics = validateAgainstSchema(roots, schema);
-// SchemaDiagnostic = { severity: "error" | "warning"; message: string; kind?: string }
+// SchemaDiagnostic = { severity: "error" | "warning"; message: string; element?: string }
 ```
 
 `parseSchema`/`parseSchemaFile` throw `SchemaDefinitionError` when the schema
 itself is malformed. `validateAgainstSchema` never throws; it returns a list
 of diagnostics (empty when the document is valid).
 
-Checks performed: unknown kind for the current scope, unknown attribute,
-missing required attribute, attribute type mismatch, and cardinality
-violations (under `minCount`, over `maxCount`).
+Checks performed: unknown element for the current scope, unknown attribute,
+missing required attribute, attribute type mismatch, positional value
+presence/type (per a declared `value` line), cardinality violations (under
+`minCount`, over `maxCount`), and ref-target-kind mismatches for
+ref-constrained `attr`/`value` declarations (resolved against the full
+document tree being validated, including `!include`-spliced content).
 
 > **Limitation:** diagnostics are not line-anchored. `IndentNode` carries no
 > position information (the parser drops line numbers when building the
-> tree), so diagnostics identify the offending kind structurally rather than
-> by source range. Editor squiggles are a follow-up in
+> tree), so diagnostics identify the offending element structurally rather
+> than by source range. Editor squiggles are a follow-up in
 > `indent-language-server`, whose CST does retain positions.
 
 ### Binding a document to a schema

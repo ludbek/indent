@@ -48,8 +48,17 @@ class Scanner {
     throw new XPathParseError(message, this.raw);
   }
 
-  /** Reads a bare node-kind/step name matching {@link KIND_NAME_REGEX}. */
+  /**
+   * Reads a bare node-kind/step name matching {@link KIND_NAME_REGEX}, or
+   * the wildcard step name `*` (matches any node kind -- see
+   * `matchesStep` in evaluate.ts). The wildcard must be the entire step
+   * name, not mixed with other characters (e.g. `*foo` is rejected).
+   */
   readName(context: string): string {
+    if (this.peek() === "*") {
+      this.advance();
+      return "*";
+    }
     const start = this.pos;
     while (!this.eof && /[-_=<>A-Za-z0-9]/.test(this.peek())) {
       this.advance();
@@ -226,12 +235,14 @@ function parsePredicate(body: string, raw: string): XPathPredicate {
  * - Self-value predicates: `[.=value]`
  * - Positional index predicates: `[N]` (0-based, bare digit-only bracket
  *   body -- unambiguous since real attribute names are never pure digits)
+ * - Wildcard step name `*` (e.g. `//*`, `/*`): matches any node kind at
+ *   that step. Must be the entire step name (`*foo` is rejected).
  *
  * Not supported (throws `XPathParseError`): relative paths without a
- * leading `/`, `..`/parent axis, `@name` as a standalone step, wildcard
- * `*` names, multiple separate bracket groups on one step (`[a][b]` --
- * use `[a,b]` instead), and a `name=value` self-value shorthand (use the
- * bracketed `[.=value]` form instead).
+ * leading `/`, `..`/parent axis, `@name` as a standalone step, multiple
+ * separate bracket groups on one step (`[a][b]` -- use `[a,b]` instead),
+ * and a `name=value` self-value shorthand (use the bracketed `[.=value]`
+ * form instead).
  */
 export function parseXPath(raw: string): ParsedXPath {
   let text = raw.trim();
