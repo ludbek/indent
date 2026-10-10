@@ -1,0 +1,3 @@
+!schema "org.schema.inml"
+org name="Acme"
+    service name="user-service" enabled=true

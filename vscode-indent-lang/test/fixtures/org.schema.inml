@@ -1,0 +1,7 @@
+kind "org"
+    attr "name" type="string" required=true
+    kind //kind[.="service"] minCount=1
+
+kind "service"
+    attr "name" type="string" required=true
+    attr "enabled" type="boolean"

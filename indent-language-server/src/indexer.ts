@@ -4,6 +4,12 @@ import { URI } from "vscode-uri";
 import type { Range } from "vscode-languageserver";
 import { CstParser } from "./cst.js";
 import { parseXPath, selectNodes } from "indent-lang/xpath";
+import {
+  isSchemaDefinitionFile,
+  parseSchema,
+  SchemaDefinitionError,
+  type Schema,
+} from "indent-lang/schema";
 import { buildXPathForest } from "./xpathTree.js";
 import { findAllInmlFiles, findProjectRoot } from "./project.js";
 import type {
@@ -11,6 +17,7 @@ import type {
   AstStatement,
   IndexedNode,
   RefReference,
+  SchemaLink,
 } from "./types.js";
 
 export function uriToFsPath(uri: string): string {
@@ -33,7 +40,20 @@ export interface IncludeLink {
   range: Range;
   exists: boolean;
   isCircular?: boolean;
+  /**
+   * True when the resolved include target is itself classified as a schema
+   * definition file (`.schema.inml`). Schema files are not valid `!include`
+   * targets -- a schema is bound via `!schema "path"`, never spliced in as
+   * ordinary content. Surfaced as a hard-error diagnostic.
+   */
+  invalidIncludeOfSchemaFile?: boolean;
 }
+
+export interface SchemaFileEntry {
+  schema?: Schema;
+  parseError?: string;
+}
+
 
 export class WorkspaceIndex {
   public parser!: CstParser;
@@ -44,6 +64,27 @@ export class WorkspaceIndex {
   public refReferences: RefReference[] = [];
   public inboundReferences = new Map<string, RefReference[]>();
   public includeLinks: IncludeLink[] = [];
+  /**
+   * URIs of documents classified as schema definition files (`.schema.inml`
+   * suffix). Classification is purely name-based -- no cross-file reference
+   * discovery. Schema-classified documents are excluded from the ordinary
+   * `rootNodes`/`nodesByPath` tree and ref resolution, and are instead
+   * parsed as schema grammar (see `schemaFiles`).
+   */
+  public schemaClassifiedUris: Set<string> = new Set();
+  /** Parsed `Schema` (or parse error) per schema-classified document uri. */
+  public schemaFiles: Map<string, SchemaFileEntry> = new Map();
+  /** Every `!schema "path"` occurrence across the workspace, resolved. */
+  public schemaLinks: SchemaLink[] = [];
+  /**
+   * The single schema binding in effect for a document, keyed by that
+   * document's own uri -- i.e. the `!schema` occurrence that satisfies the
+   * placement rules (first statement, depth 0, no attrs, quoted string,
+   * only once). Other `!schema` occurrences in the same file are reported
+   * as misuse diagnostics instead of contributing a binding.
+   */
+  public schemaBindingByUri: Map<string, SchemaLink> = new Map();
+
   public workspaceRoots: string[] = [];
   /**
    * Discovered project roots (see `findProjectRoot`) mapped to the set of
@@ -340,6 +381,30 @@ export class WorkspaceIndex {
     this.refReferences = [];
     this.inboundReferences.clear();
     this.includeLinks = [];
+    this.schemaClassifiedUris.clear();
+    this.schemaFiles.clear();
+    this.schemaLinks = [];
+    this.schemaBindingByUri.clear();
+
+    // 0. Classify schema definition files by naming convention
+    // (`.schema.inml`), and parse each as schema grammar. Classification is
+    // purely local/name-based -- a file doesn't need to be linked from
+    // anywhere to be treated as a schema file.
+    for (const doc of this.documents.values()) {
+      const docFsPath = uriToFsPath(doc.uri);
+      if (!isSchemaDefinitionFile(docFsPath)) continue;
+      this.schemaClassifiedUris.add(doc.uri);
+      try {
+        const schema = parseSchema(doc.text);
+        this.schemaFiles.set(doc.uri, { schema });
+      } catch (err) {
+        const message =
+          err instanceof SchemaDefinitionError || err instanceof Error
+            ? err.message
+            : String(err);
+        this.schemaFiles.set(doc.uri, { parseError: message });
+      }
+    }
 
     // 1. Build include links and check for existence / cycles
     for (const doc of this.documents.values()) {
@@ -360,7 +425,42 @@ export class WorkspaceIndex {
             resolvedUri,
             range: stmt.kindRange,
             exists,
+            invalidIncludeOfSchemaFile:
+              exists && this.schemaClassifiedUris.has(resolvedUri),
           });
+        }
+
+        if (stmt.isSchema && stmt.schemaPath) {
+          const raw = stmt.schemaPath;
+          const targetFsPath = resolve(docDir, raw);
+          const exists = existsSync(targetFsPath);
+          const resolvedUri = fsPathToUri(targetFsPath);
+          const targetEntry = this.schemaFiles.get(resolvedUri);
+          const isValidSchemaFile =
+            exists &&
+            this.schemaClassifiedUris.has(resolvedUri) &&
+            !!targetEntry?.schema &&
+            !targetEntry?.parseError;
+
+          const link: SchemaLink = {
+            sourceUri: doc.uri,
+            rawPath: raw,
+            resolvedFsPath: targetFsPath,
+            resolvedUri,
+            range: stmt.value?.range ?? stmt.kindRange,
+            exists,
+            isValidSchemaFile,
+          };
+          this.schemaLinks.push(link);
+
+          // The binding in effect is the occurrence satisfying placement
+          // rules: first statement in the file, depth 0. Other occurrences
+          // are left to diagnostics.ts to flag as misuse.
+          const isFirstRootStatement =
+            doc.roots.length > 0 && doc.roots[0].id === stmt.id;
+          if (isFirstRootStatement && stmt.depth === 0 && !this.schemaBindingByUri.has(doc.uri)) {
+            this.schemaBindingByUri.set(doc.uri, link);
+          }
         }
       }
     }
@@ -371,6 +471,11 @@ export class WorkspaceIndex {
     // with the first attribute that yields uniqueness, e.g. /org[name="Acme"],
     // falling back to positional index e.g. /org[0] when no attribute suffices.
     for (const doc of this.documents.values()) {
+      // Schema-classified documents are interpreted only via the schema
+      // parser/grammar (see pass 0) -- they never contribute to the
+      // ordinary node tree, ref resolution, or completion stats.
+      if (this.schemaClassifiedUris.has(doc.uri)) continue;
+
       const buildChildren = (stmts: AstStatement[], parentPath?: string) => {
         // Group siblings by kind to detect collisions
         const kindGroups = new Map<string, AstStatement[]>();
@@ -432,6 +537,7 @@ export class WorkspaceIndex {
     };
 
     for (const doc of this.documents.values()) {
+      if (this.schemaClassifiedUris.has(doc.uri)) continue;
       for (const stmt of doc.allStatements) {
         const sourceNode = this.nodesById.get(stmt.id);
         const sourcePath = sourceNode?.canonicalPath ?? "";

@@ -113,6 +113,7 @@ export class CstParser {
       const kindRange = typeNode ? tsNodeToRange(typeNode) : tsNodeToRange(node);
 
       const isInclude = kind === "!include";
+      const isSchema = kind === "!schema";
 
       // Parse optional positional value immediately after type
       const posValNode =
@@ -233,6 +234,10 @@ export class CstParser {
         value: stmtValue,
         isInclude,
         includePath: isInclude && stmtValue && stmtValue.valueType === "string"
+          ? (stmtValue.value as string)
+          : undefined,
+        isSchema,
+        schemaPath: isSchema && stmtValue && stmtValue.valueType === "string"
           ? (stmtValue.value as string)
           : undefined,
         attrs,

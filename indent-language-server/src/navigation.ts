@@ -10,6 +10,13 @@ import {
 } from "vscode-languageserver";
 import type { WorkspaceIndex } from "./indexer.js";
 import type { AstStatement, IndexedNode } from "./types.js";
+import type { Schema } from "indent-lang/schema";
+
+function getSchemaForDocument(index: WorkspaceIndex, uri: string): Schema | undefined {
+  const binding = index.schemaBindingByUri.get(uri);
+  if (!binding || !binding.isValidSchemaFile || !binding.resolvedUri) return undefined;
+  return index.schemaFiles.get(binding.resolvedUri)?.schema;
+}
 
 function isPositionInsideRange(pos: Position, range: Range): boolean {
   if (pos.line < range.start.line || pos.line > range.end.line) return false;
@@ -83,7 +90,27 @@ export function getHover(
     }
   }
 
-  // 2. Hover on ref reference
+  // 2. Hover on schema link
+  for (const link of index.schemaLinks) {
+    if (link.sourceUri === uri && isPositionInsideRange(position, link.range)) {
+      const md = [
+        `### Schema File`,
+        `**Path:** \`${link.rawPath}\``,
+        `**Resolved:** \`${link.resolvedFsPath}\``,
+        link.isValidSchemaFile
+          ? `Status: Valid`
+          : link.exists
+            ? `Status: **Not a valid schema file**`
+            : `Status: **File Not Found**`,
+      ].join("\n\n");
+      return {
+        contents: { kind: MarkupKind.Markdown, value: md },
+        range: link.range,
+      };
+    }
+  }
+
+  // 3. Hover on ref reference
   for (const ref of index.refReferences) {
     if (ref.uri === uri && isPositionInsideRange(position, ref.range)) {
       const targets = ref.resolvedTargetPaths
@@ -124,9 +151,11 @@ export function getHover(
     }
   }
 
-  // 3. Hover on statement node / keyword / attribute
+  // 4. Hover on statement node / keyword / attribute
   const stmt = index.getStatementAtPosition(uri, position);
   if (stmt) {
+    const schema = getSchemaForDocument(index, uri);
+    const kindSchema = schema?.kinds.get(stmt.kind);
     const node = index.nodesById.get(stmt.id);
     if (node) {
       const lines = [
@@ -138,10 +167,31 @@ export function getHover(
       }
 
       const attrList = Object.entries(node.attrs)
-        .map(([k, v]) => `- \`${k}\`: \`${v.value}\``)
+        .map(([k, v]) => {
+          const attrSchema = kindSchema?.attrs.get(k);
+          const schemaNote = attrSchema
+            ? ` _(${attrSchema.required ? "required" : "optional"} ${attrSchema.type}, schema)_`
+            : "";
+          return `- \`${k}\`: \`${v.value}\`${schemaNote}`;
+        })
         .join("\n");
       if (attrList) {
         lines.push(`**Attributes:**\n${attrList}`);
+      }
+
+      if (kindSchema) {
+        const schemaAttrLines = Array.from(kindSchema.attrs.entries())
+          .filter(([name]) => !(name in node.attrs))
+          .map(([name, a]) => `- \`${name}\`: ${a.required ? "required" : "optional"} ${a.type}`);
+        if (schemaAttrLines.length > 0) {
+          lines.push(`**Other schema attrs for '${stmt.kind}':**\n${schemaAttrLines.join("\n")}`);
+        }
+        const childKinds = Array.from(kindSchema.children.keys());
+        if (childKinds.length > 0) {
+          lines.push(`**Allowed children (schema):** ${childKinds.map((k) => `\`${k}\``).join(", ")}`);
+        }
+      } else if (schema && !schema.kinds.has(stmt.kind) && !schema.roots.has(stmt.kind)) {
+        lines.push(`_Kind \`${stmt.kind}\` is not declared in the bound schema._`);
       }
 
       // Show inbound references pointing to this node
