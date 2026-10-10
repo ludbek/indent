@@ -867,39 +867,43 @@ export function computeCompletions(
     if (!isQuoted) {
       // Ambiguous bare token -- also offer attribute names that could start
       // here (once the user adds `=`), filtered by whatever's typed so far.
-      const attrCounts = attrsByKind.get(kindName);
-      const suggestedAttrNames = new Set<string>();
-      if (attrCounts) {
-        const lowerPartial = partial.toLowerCase();
-        const sortedAttrs = [...attrCounts.entries()].sort((a, b) => b[1] - a[1]);
-        for (const [attrName, count] of sortedAttrs) {
-          if (partial && !attrName.toLowerCase().startsWith(lowerPartial)) continue;
-          suggestedAttrNames.add(attrName);
-          valueItems.push({
-            label: attrName,
-            kind: CompletionItemKind.Property,
-            detail: `Used ${count} time${count === 1 ? "" : "s"} on '${kindName}' in workspace`,
-            textEdit: { range, newText: `${attrName}="\${1:value}"` },
-            insertTextFormat: InsertTextFormat.Snippet,
-          });
-        }
-      }
-
-      // Schema-driven attr-name suggestions, unioned with the above.
+      // When a schema is bound, it is the sole source of truth: only its
+      // declared attrs are suggested, never workspace-wide "used elsewhere"
+      // ones (which may not even be valid for this schema-bound document).
       const schema = getSchemaForDocument(index, uri);
       const elementSchema = schema?.elements.get(kindName);
-      if (elementSchema) {
-        const lowerPartial = partial.toLowerCase();
-        for (const [attrName, attrSchema] of elementSchema.attrs) {
-          if (suggestedAttrNames.has(attrName)) continue;
-          if (partial && !attrName.toLowerCase().startsWith(lowerPartial)) continue;
-          valueItems.push({
-            label: attrName,
-            kind: CompletionItemKind.Property,
-            detail: `${attrSchema.required ? "Required" : "Optional"} ${attrSchema.type} attr (schema)`,
-            textEdit: { range, newText: `${attrName}="\${1:value}"` },
-            insertTextFormat: InsertTextFormat.Snippet,
-          });
+      const lowerPartial = partial.toLowerCase();
+      const suggestedAttrNames = new Set<string>();
+
+      if (schema) {
+        if (elementSchema) {
+          for (const [attrName, attrSchema] of elementSchema.attrs) {
+            if (partial && !attrName.toLowerCase().startsWith(lowerPartial)) continue;
+            suggestedAttrNames.add(attrName);
+            valueItems.push({
+              label: attrName,
+              kind: CompletionItemKind.Property,
+              detail: `${attrSchema.required ? "Required" : "Optional"} ${attrSchema.type} attr (schema)`,
+              textEdit: { range, newText: `${attrName}="\${1:value}"` },
+              insertTextFormat: InsertTextFormat.Snippet,
+            });
+          }
+        }
+      } else {
+        const attrCounts = attrsByKind.get(kindName);
+        if (attrCounts) {
+          const sortedAttrs = [...attrCounts.entries()].sort((a, b) => b[1] - a[1]);
+          for (const [attrName, count] of sortedAttrs) {
+            if (partial && !attrName.toLowerCase().startsWith(lowerPartial)) continue;
+            suggestedAttrNames.add(attrName);
+            valueItems.push({
+              label: attrName,
+              kind: CompletionItemKind.Property,
+              detail: `Used ${count} time${count === 1 ? "" : "s"} on '${kindName}' in workspace`,
+              textEdit: { range, newText: `${attrName}="\${1:value}"` },
+              insertTextFormat: InsertTextFormat.Snippet,
+            });
+          }
         }
       }
     }
@@ -917,28 +921,15 @@ export function computeCompletions(
       start: { line: position.line, character: leadingWhitespaceLen },
       end: position,
     };
-    // Suggest kinds already used elsewhere in the workspace, most frequent first.
-    const sortedKinds = [...kindCounts.entries()].sort((a, b) => b[1] - a[1]);
-    const suggestedKinds = new Set<string>();
-    for (const [kindName, count] of sortedKinds) {
-      suggestedKinds.add(kindName);
-      items.push({
-        label: kindName,
-        kind: CompletionItemKind.Keyword,
-        detail: `Used ${count} time${count === 1 ? "" : "s"} in workspace`,
-        textEdit: {
-          range: replaceRange,
-          newText: kindName,
-        },
-        insertTextFormat: InsertTextFormat.PlainText,
-      });
-    }
-
-    // Schema-driven kind suggestions -- unioned with the workspace-derived
-    // ones above, never replacing them. Scoped to whatever child kinds are
-    // actually allowed at this depth per the bound schema (document roots
-    // at depth 0, or the enclosing statement's declared children otherwise).
+    // When a schema is bound, it is the sole source of truth for which
+    // kinds are allowed here: only its declared children are suggested
+    // (document roots at depth 0, or the enclosing statement's declared
+    // children otherwise), never workspace-wide "used elsewhere" kinds
+    // that may not even be valid for this schema-bound document. Only
+    // fall back to workspace-frequency suggestions when no schema is bound.
     const schema = getSchemaForDocument(index, uri);
+    const suggestedKinds = new Set<string>();
+
     if (schema) {
       const currentDepth = Math.round(leadingWhitespaceLen / INDENT_UNIT);
       const parentKind = findEnclosingKind(doc, position, currentDepth);
@@ -946,7 +937,6 @@ export function computeCompletions(
         currentDepth === 0 ? schema.roots : schema.elements.get(parentKind ?? "")?.children;
       if (allowedChildren) {
         for (const kindName of allowedChildren.keys()) {
-          if (suggestedKinds.has(kindName)) continue;
           suggestedKinds.add(kindName);
           items.push({
             label: kindName,
@@ -959,6 +949,22 @@ export function computeCompletions(
             insertTextFormat: InsertTextFormat.PlainText,
           });
         }
+      }
+    } else {
+      // Suggest kinds already used elsewhere in the workspace, most frequent first.
+      const sortedKinds = [...kindCounts.entries()].sort((a, b) => b[1] - a[1]);
+      for (const [kindName, count] of sortedKinds) {
+        suggestedKinds.add(kindName);
+        items.push({
+          label: kindName,
+          kind: CompletionItemKind.Keyword,
+          detail: `Used ${count} time${count === 1 ? "" : "s"} in workspace`,
+          textEdit: {
+            range: replaceRange,
+            newText: kindName,
+          },
+          insertTextFormat: InsertTextFormat.PlainText,
+        });
       }
     }
 
@@ -980,7 +986,31 @@ export function computeCompletions(
     };
     const suggestedAttrs = new Set<string>();
 
-    if (attrCounts) {
+    // When a schema is bound, it is the sole source of truth: only its
+    // declared attrs are suggested, never workspace-wide "used elsewhere"
+    // ones (which may not even be valid for this schema-bound document).
+    const schema = getSchemaForDocument(index, uri);
+    const elementSchema = schema?.elements.get(stmt.kind);
+
+    if (schema) {
+      if (elementSchema) {
+        for (const [attrName, attrSchema] of elementSchema.attrs) {
+          if (stmt.attrs[attrName]) continue;
+          if (partial && !attrName.toLowerCase().startsWith(lowerPartial)) continue;
+          suggestedAttrs.add(attrName);
+          items.push({
+            label: attrName,
+            kind: CompletionItemKind.Property,
+            detail: `${attrSchema.required ? "Required" : "Optional"} ${attrSchema.type} attr (schema)`,
+            textEdit: {
+              range: replaceRange,
+              newText: `${attrName}="\${1:value}"`,
+            },
+            insertTextFormat: InsertTextFormat.Snippet,
+          });
+        }
+      }
+    } else if (attrCounts) {
       const sortedAttrs = [...attrCounts.entries()].sort((a, b) => b[1] - a[1]);
       for (const [attrName, count] of sortedAttrs) {
         if (stmt.attrs[attrName]) continue;
@@ -990,27 +1020,6 @@ export function computeCompletions(
           label: attrName,
           kind: CompletionItemKind.Property,
           detail: `Used ${count} time${count === 1 ? "" : "s"} on '${stmt.kind}' in workspace`,
-          textEdit: {
-            range: replaceRange,
-            newText: `${attrName}="\${1:value}"`,
-          },
-          insertTextFormat: InsertTextFormat.Snippet,
-        });
-      }
-    }
-
-    // Schema-driven attr-name suggestions, unioned with the above.
-    const schema = getSchemaForDocument(index, uri);
-    const elementSchema = schema?.elements.get(stmt.kind);
-    if (elementSchema) {
-      for (const [attrName, attrSchema] of elementSchema.attrs) {
-        if (stmt.attrs[attrName]) continue;
-        if (suggestedAttrs.has(attrName)) continue;
-        if (partial && !attrName.toLowerCase().startsWith(lowerPartial)) continue;
-        items.push({
-          label: attrName,
-          kind: CompletionItemKind.Property,
-          detail: `${attrSchema.required ? "Required" : "Optional"} ${attrSchema.type} attr (schema)`,
           textEdit: {
             range: replaceRange,
             newText: `${attrName}="\${1:value}"`,
