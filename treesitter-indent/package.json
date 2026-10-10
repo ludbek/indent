@@ -22,15 +22,29 @@
     "tree-sitter.json",
     "queries/*",
     "src/**",
-    "*.wasm"
+    "bindings/node/**",
+    "binding.gyp",
+    "*.wasm",
+    "prebuilds/**"
   ],
+  "main": "bindings/node/index.js",
+  "types": "bindings/node/index.d.ts",
+  "dependencies": {
+    "node-addon-api": "^8.3.0",
+    "node-gyp-build": "^4.8.4"
+  },
   "devDependencies": {
-    "tree-sitter-cli": "^0.25.8"
+    "tree-sitter": "^0.25.0",
+    "tree-sitter-cli": "^0.25.8",
+    "web-tree-sitter": "^0.27.0",
+    "prebuildify": "^6.0.1"
   },
   "scripts": {
     "build": "tree-sitter build --wasm",
     "build:wasm": "tree-sitter build --wasm",
+    "build:node": "node-gyp-build",
+    "prebuild:node": "prebuildify --napi --strip",
     "start": "tree-sitter playground",
-    "test": "tree-sitter test"
+    "test": "tree-sitter test && node --test bindings/node/binding_test.js && node test/parity.mjs"
   }
 }

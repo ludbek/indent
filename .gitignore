@@ -3,3 +3,4 @@ node_modules/
 vscode-indent-lang/dist/
 treesitter-indent/*.wasm
 indent-language-server/dist/
+treesitter-indent/build/
