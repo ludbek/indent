@@ -34,10 +34,15 @@
       "import": "./dist/schema/index.js",
       "require": "./dist/schema/index.cjs"
     },
+    "./schema/resolve": {
+      "types": "./dist/schema/resolve.d.ts",
+      "import": "./dist/schema/resolve.js",
+      "require": "./dist/schema/resolve.cjs"
+    },
     "./cst": {
-      "types": "./dist/cstParser.d.ts",
-      "import": "./dist/cstParser.js",
-      "require": "./dist/cstParser.cjs"
+      "types": "./dist/cstWalker.d.ts",
+      "import": "./dist/cstWalker.js",
+      "require": "./dist/cstWalker.cjs"
     }
   },
   "files": [
