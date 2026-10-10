@@ -33,6 +33,11 @@
       "types": "./dist/schema/index.d.ts",
       "import": "./dist/schema/index.js",
       "require": "./dist/schema/index.cjs"
+    },
+    "./cst": {
+      "types": "./dist/cstParser.d.ts",
+      "import": "./dist/cstParser.js",
+      "require": "./dist/cstParser.cjs"
     }
   },
   "files": [

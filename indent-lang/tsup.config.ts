@@ -6,6 +6,7 @@ export default defineConfig({
     "src/cli.ts",
     "src/xpath/index.ts",
     "src/schema/index.ts",
+    "src/cstParser.ts",
   ],
   format: ["esm", "cjs"],
   dts: true,

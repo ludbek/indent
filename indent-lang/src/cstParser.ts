@@ -68,6 +68,16 @@ export interface CstIndentNode {
   kind: string;
   kindRange: CstRange;
   value?: string | number | boolean | RefValue;
+  /**
+   * The statement's own positional value, retaining its full ranged shape
+   * (value/valueRaw/valueType/range) -- unlike `value` above, which is
+   * projected down to the plain legacy-compatible shape (ref values
+   * collapsed to `RefValue`, losing their range). Consumers that need
+   * position info for the positional value itself (e.g.
+   * `indent-language-server`'s `AstStatement.value`) should read this field
+   * instead of `value`.
+   */
+  rawValue?: CstValue;
   isInclude: boolean;
   includePath?: string;
   isSchema: boolean;
@@ -202,6 +212,7 @@ function parseStatement(node: CstNode, parent: CstIndentNode | undefined, depth:
     kind,
     kindRange,
     value: stmtValue ? (stmtValue.valueType === "ref" ? { type: "ref", raw: stmtValue.valueRaw } : stmtValue.value) : undefined,
+    rawValue: stmtValue,
     isInclude,
     includePath: isInclude && stmtValue && stmtValue.valueType === "string" ? (stmtValue.value as string) : undefined,
     isSchema,
@@ -238,20 +249,16 @@ function getParser(): Parser {
 }
 
 /**
- * Parses Indent source text into a `CstIndentNode` tree using the shared
- * tree-sitter grammar (`treesitter-indent`), via the native Node binding.
- *
- * This is the single source of truth for parsing: `indent-lang`'s legacy
- * `parse()`/`buildTree()` API (see `parser.ts`) is a thin wrapper around
- * this function that projects the result down to the plain `IndentNode`
- * shape via `toIndentNode()`. `indent-language-server` ports this same
- * tree-walking logic (see `cst.ts`) against `web-tree-sitter` instead, for
- * incremental re-parse support.
+ * Walks an already-parsed tree-sitter root node into a `CstIndentNode`
+ * tree. Generic over the `CstNode` shape, so it works unmodified against a
+ * root node produced by either the native `tree-sitter` binding (see
+ * `parseCst` below) or `web-tree-sitter` (WASM) -- callers that already
+ * manage their own `Parser`/`Tree` instance (e.g. `indent-language-server`,
+ * which needs to retain the `Tree` for incremental re-parse via
+ * `tree.edit()`) should call this directly with `tree.rootNode` rather than
+ * going through `parseCst`.
  */
-export function parseCst(source: string): CstParseResult {
-  const tree = getParser().parse(source);
-  const rootNode = tree.rootNode as unknown as CstNode;
-
+export function walkCstTree(rootNode: CstNode): CstParseResult {
   const errors: CstSyntaxError[] = [];
   collectErrors(rootNode, errors);
 
@@ -265,6 +272,22 @@ export function parseCst(source: string): CstParseResult {
   }
 
   return { roots, errors };
+}
+
+/**
+ * Parses Indent source text into a `CstIndentNode` tree using the shared
+ * tree-sitter grammar (`treesitter-indent`), via the native Node binding.
+ *
+ * This is the single source of truth for parsing: `indent-lang`'s legacy
+ * `parse()`/`buildTree()` API (see `parser.ts`) is a thin wrapper around
+ * this function that projects the result down to the plain `IndentNode`
+ * shape via `toIndentNode()`. `indent-language-server` calls `walkCstTree`
+ * directly against `web-tree-sitter` instead, for incremental re-parse
+ * support.
+ */
+export function parseCst(source: string): CstParseResult {
+  const tree = getParser().parse(source);
+  return walkCstTree(tree.rootNode as unknown as CstNode);
 }
 
 /** Projects a `CstIndentNode`'s `attrs` map down to the plain legacy `AttrValue` shape. */
