@@ -521,8 +521,47 @@ export class WorkspaceIndex {
       }
     }
 
-    // 3. Resolve refs (both attribute values and a node's own positional value)
-    const refForest = buildXPathForest(this.rootNodes, this.nodesByPath);
+    // 3. Resolve refs (both attribute values and a node's own positional value).
+    //
+    // Refs only resolve within the document they're written in, plus any
+    // documents transitively reachable via that document's own forward
+    // `!include` chain -- NOT against every `.inml` file the workspace scan
+    // happens to discover. Each document gets its own xpath forest scoped to
+    // {itself} union {its transitive includes}, so an unrelated file sitting
+    // in the same project folder (never opened, never included) can't
+    // silently satisfy a ref that should otherwise be flagged unresolved.
+    const rootNodesByUri = new Map<string, IndexedNode[]>();
+    for (const node of this.rootNodes) {
+      const list = rootNodesByUri.get(node.uri) ?? [];
+      list.push(node);
+      rootNodesByUri.set(node.uri, list);
+    }
+
+    const includeLinksBySourceUri = new Map<string, IncludeLink[]>();
+    for (const link of this.includeLinks) {
+      const list = includeLinksBySourceUri.get(link.sourceUri) ?? [];
+      list.push(link);
+      includeLinksBySourceUri.set(link.sourceUri, list);
+    }
+
+    // Forward-only transitive closure of a document's own `!include`s.
+    // Cycle-safe via the `visited` set (two files including each other, or a
+    // longer include cycle, simply stops expanding once every reachable
+    // document has been seen).
+    const visibleDocUris = (startUri: string): Set<string> => {
+      const visited = new Set<string>([startUri]);
+      const queue = [startUri];
+      while (queue.length > 0) {
+        const current = queue.shift()!;
+        for (const link of includeLinksBySourceUri.get(current) ?? []) {
+          if (!link.exists || !link.resolvedUri || link.invalidIncludeOfSchemaFile) continue;
+          if (visited.has(link.resolvedUri)) continue;
+          visited.add(link.resolvedUri);
+          queue.push(link.resolvedUri);
+        }
+      }
+      return visited;
+    };
 
     // The CST classifies any non-number/boolean unquoted value as "ref"
     // type, including incomplete text a user is still typing (e.g. "/org/"
@@ -530,7 +569,7 @@ export class WorkspaceIndex {
     // incomplete/invalid input -- treat that as simply "unresolved" (empty
     // target list) rather than crashing the whole index rebuild, so live
     // editing stays resilient.
-    const resolveRefTargets = (raw: string): string[] => {
+    const resolveRefTargetsIn = (refForest: ReturnType<typeof buildXPathForest>) => (raw: string): string[] => {
       try {
         const parsed = parseXPath(raw);
         const targets = selectNodes(refForest, parsed);
@@ -542,6 +581,12 @@ export class WorkspaceIndex {
 
     for (const doc of this.documents.values()) {
       if (this.schemaClassifiedUris.has(doc.uri)) continue;
+
+      const visibleUris = visibleDocUris(doc.uri);
+      const visibleRootNodes = [...visibleUris].flatMap((uri) => rootNodesByUri.get(uri) ?? []);
+      const refForest = buildXPathForest(visibleRootNodes, this.nodesByPath);
+      const resolveRefTargets = resolveRefTargetsIn(refForest);
+
       for (const stmt of doc.allStatements) {
         const sourceNode = this.nodesById.get(stmt.id);
         const sourcePath = sourceNode?.canonicalPath ?? "";

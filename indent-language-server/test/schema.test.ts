@@ -6,6 +6,7 @@ import { WorkspaceIndex, fsPathToUri } from "../src/indexer.js";
 import { computeDiagnostics } from "../src/diagnostics.js";
 import { computeCompletions as computeCompletionsRaw } from "../src/completions.js";
 import type { CompletionItem, CompletionList } from "vscode-languageserver";
+import { DiagnosticSeverity } from "vscode-languageserver";
 
 const computeCompletions = (
   ...args: Parameters<typeof computeCompletionsRaw>
@@ -318,5 +319,61 @@ element "team"
     expect(
       diags.some((d) => /must resolve to an element of kind 'team'/.test(d.message))
     ).toBe(true);
+  });
+
+  it("flags unresolved refs as errors, both generically and via the schema's own ref-target-kind check", () => {
+    const schemaWithEdges = `
+element "org"
+    value type="string"
+    element "service"
+        value type="string"
+        attr "team" type=//element[.="team"]
+        element "API"
+            value type="string"
+            element "->"
+                value type=//*
+            element "=>"
+                value type=//*
+    element "team"
+        value type="string"
+`;
+    write("architecture.schema.inml", schemaWithEdges);
+    const docUri = write(
+      "architecture.inml",
+      [
+        `!schema "architecture.schema.inml"`,
+        `org "An org"`,
+        `    service "a service" team=//team`,
+        `        API "API A"`,
+        `            -> //APIx[.="API B"]`,
+        `        API "API B"`,
+        ``,
+      ].join("\n")
+    );
+    const diags = computeDiagnostics(docUri, index);
+
+    // Generic "indent" unresolved-reference diagnostics must be errors.
+    const genericTeam = diags.find(
+      (d) => d.source === "indent" && d.message.includes("Unresolved reference '//team'")
+    );
+    const genericApiX = diags.find(
+      (d) => d.source === "indent" && d.message.includes("Unresolved reference '//APIx")
+    );
+    expect(genericTeam?.severity).toBe(DiagnosticSeverity.Error);
+    expect(genericApiX?.severity).toBe(DiagnosticSeverity.Error);
+
+    // Schema-aware ref-target-kind diagnostics must also fire for both the
+    // attribute ref (`team=//team`) and the positional edge ref (`-> //APIx`),
+    // since both are declared as ref-constrained in the schema.
+    const schemaTeam = diags.find(
+      (d) => d.source === "indent-schema" && /attribute 'team'.*does not resolve to any node/.test(d.message)
+    );
+    const schemaApiX = diags.find(
+      (d) => d.source === "indent-schema" && /value on element '->'.*does not resolve to any node/.test(d.message)
+    );
+    expect(schemaTeam).toBeDefined();
+    expect(schemaApiX).toBeDefined();
+    expect(schemaTeam?.severity).toBe(DiagnosticSeverity.Error);
+    expect(schemaApiX?.severity).toBe(DiagnosticSeverity.Error);
   });
 });

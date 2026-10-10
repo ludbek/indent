@@ -87,7 +87,7 @@ export function computeDiagnostics(
       diagnostics.push({
         range: ref.range,
         message: `Unresolved reference '${ref.rawRef}' (${location})`,
-        severity: DiagnosticSeverity.Warning,
+        severity: DiagnosticSeverity.Error,
         source: "indent",
       });
     }
