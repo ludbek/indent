@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.2.2](https://github.com/ludbek/indent/compare/indent-language-server-v0.2.1...indent-language-server-v0.2.2) (2026-10-10)
+
+
+### Bug Fixes
+
+* drop project inml ([#23](https://github.com/ludbek/indent/issues/23)) ([874af28](https://github.com/ludbek/indent/commit/874af28ee596a0f78d1d05187b635087e7fe9cd0))
+* schema language server support ([#24](https://github.com/ludbek/indent/issues/24)) ([fc20e52](https://github.com/ludbek/indent/commit/fc20e52d6355fd42970ce2557df30e44e5634135))
+* schema specific attr autocomplete ([#25](https://github.com/ludbek/indent/issues/25)) ([0402768](https://github.com/ludbek/indent/commit/040276874221eccd39739ebe475e54f543cff516))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * indent-lang bumped from ^0.2.0 to ^0.3.0
+
 ## [0.2.1](https://github.com/ludbek/indent/compare/indent-language-server-v0.2.0...indent-language-server-v0.2.1) (2026-10-03)
 
 

@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.2.3](https://github.com/ludbek/indent/compare/vscode-indent-lang-v0.2.2...vscode-indent-lang-v0.2.3) (2026-10-10)
+
+
+### Bug Fixes
+
+* schema language server support ([#24](https://github.com/ludbek/indent/issues/24)) ([fc20e52](https://github.com/ludbek/indent/commit/fc20e52d6355fd42970ce2557df30e44e5634135))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * indent-language-server bumped from ^0.2.1 to ^0.2.2
+
 ## [0.2.2](https://github.com/ludbek/indent/compare/vscode-indent-lang-v0.2.1...vscode-indent-lang-v0.2.2) (2026-10-03)
 
 
