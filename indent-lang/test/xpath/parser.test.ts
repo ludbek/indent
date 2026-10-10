@@ -38,6 +38,31 @@ describe("parseXPath", () => {
     ]);
   });
 
+  describe("wildcard step name", () => {
+    it("parses a descendant wildcard '//*'", () => {
+      const parsed = parseXPath("//*");
+      expect(parsed.isDescendant).toBe(true);
+      expect(parsed.steps).toEqual([{ axis: "descendant", name: "*", predicate: undefined }]);
+    });
+
+    it("parses a child wildcard '/*'", () => {
+      const parsed = parseXPath("/*");
+      expect(parsed.isAbsolute).toBe(true);
+      expect(parsed.steps).toEqual([{ axis: "child", name: "*", predicate: undefined }]);
+    });
+
+    it("parses a wildcard with a predicate '//*[.=\"team\"]'", () => {
+      const parsed = parseXPath('//*[.="team"]');
+      expect(parsed.steps).toEqual([
+        { axis: "descendant", name: "*", predicate: { type: "self", value: "team" } },
+      ]);
+    });
+
+    it("rejects a wildcard mixed with other characters ('*foo')", () => {
+      expect(() => parseXPath("/*foo")).toThrow(XPathParseError);
+    });
+  });
+
   describe("kind/step names", () => {
     it("parses a hyphenated kind/step name", () => {
       const parsed = parseXPath("/auth-server/api");

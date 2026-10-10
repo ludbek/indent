@@ -177,6 +177,17 @@ describe("tokenize", () => {
     ]);
   });
 
+  it("tokenizes wildcard '*' ref steps", () => {
+    const tokens = tokenize(
+      ["a p1=//*", 'a p2=/Member/*', 'a p3=//*[.="team"]', ""].join("\n"),
+    );
+    expect(tokens.map((t) => t.attrs.p1 ?? t.attrs.p2 ?? t.attrs.p3)).toEqual([
+      { type: "ref", raw: "//*" },
+      { type: "ref", raw: "/Member/*" },
+      { type: "ref", raw: '//*[.="team"]' },
+    ]);
+  });
+
   it("treats -> entity as a ref reference", () => {
     const tokens = tokenize('            -> entity=/UpstreamOrg/super/rollover\n');
     expect(tokens[0].kind).toBe("->");
@@ -195,13 +206,16 @@ describe("tokenize", () => {
     // Explicit-relative (`./`) and parent (`../`) axes are no longer supported.
     expect(() => tokenize("a bad=./Rollover\n")).toThrow(IndentParseError);
     expect(() => tokenize("a bad=../Rollover\n")).toThrow(IndentParseError);
-    // `.`/`..` alone, wildcard `*`, and standalone `@name` (attribute axis
-    // outside a predicate) are no longer supported.
+    // `.`/`..` alone and standalone `@name` (attribute axis outside a
+    // predicate) are no longer supported. Wildcard `*` IS now supported
+    // (see tokenizer.test.ts's dedicated wildcard cases below / xpath
+    // package), so `/Member/*` is no longer a bad form.
     expect(() => tokenize("a bad=.\n")).toThrow(IndentParseError);
     expect(() => tokenize("a bad=..\n")).toThrow(IndentParseError);
-    expect(() => tokenize("a bad=/Member/*\n")).toThrow(IndentParseError);
     expect(() => tokenize("a bad=@kind\n")).toThrow(IndentParseError);
     expect(() => tokenize("a bad=/Member/@name\n")).toThrow(IndentParseError);
+    // Wildcard mixed with other characters is still rejected.
+    expect(() => tokenize("a bad=/Member/*foo\n")).toThrow(IndentParseError);
     // Old XML-style `[@attr="value"]` predicates (with the `@`) are no
     // longer supported -- only bare `[attr="value"]` is.
     expect(() => tokenize('a bad=/Member[@name="Roll Over"]\n')).toThrow(IndentParseError);

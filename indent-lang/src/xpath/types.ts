@@ -58,14 +58,14 @@ export type XPathPredicate =
 /**
  * Axis for a single path step. Only `child` (default, single `/`) and
  * `descendant` (`//`, any depth) are supported in this subset. Not
- * supported yet: `parent` (`..`), `self` (`.`) as a standalone step,
- * `attribute` (`@name`) as a standalone step, and wildcard (`*`) names.
+ * supported yet: `parent` (`..`), `self` (`.`) as a standalone step, and
+ * `attribute` (`@name`) as a standalone step.
  */
 export type XPathAxis = "child" | "descendant";
 
 export interface XPathStep {
   axis: XPathAxis;
-  /** Node kind to match, e.g. "service". No wildcard support in this subset. */
+  /** Node kind to match, e.g. "service". The wildcard `"*"` matches any kind. */
   name: string;
   predicate?: XPathPredicate;
 }

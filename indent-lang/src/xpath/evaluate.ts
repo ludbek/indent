@@ -24,7 +24,7 @@ function matchesPredicate<T extends XPathNode>(node: T, predicate: XPathPredicat
 }
 
 function matchesStep<T extends XPathNode>(node: T, step: XPathStep): boolean {
-  if (node.kind.toLowerCase() !== step.name.toLowerCase()) return false;
+  if (step.name !== "*" && node.kind.toLowerCase() !== step.name.toLowerCase()) return false;
   if (step.predicate && !matchesPredicate(node, step.predicate)) return false;
   return true;
 }
@@ -80,9 +80,10 @@ export function selectNodes<T extends XPathNode>(
       // candidate, using whatever order `candidates` already carries for
       // this axis (sibling/registration order for `child`, depth-first
       // pre-order for `descendant`) -- no separate traversal needed.
-      const kindMatches = candidates.filter(
-        (n) => n.kind.toLowerCase() === step.name.toLowerCase(),
-      );
+      const kindMatches =
+        step.name === "*"
+          ? candidates
+          : candidates.filter((n) => n.kind.toLowerCase() === step.name.toLowerCase());
       const target = kindMatches[step.predicate.index];
       currentSet = target ? [target] : [];
       if (currentSet.length === 0) break;
