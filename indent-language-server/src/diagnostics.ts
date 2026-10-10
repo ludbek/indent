@@ -171,7 +171,7 @@ export function computeDiagnostics(
       // validate this document's own tree against it.
       const schemaEntry = binding.resolvedUri ? index.schemaFiles.get(binding.resolvedUri) : undefined;
       if (schemaEntry?.schema) {
-        diagnostics.push(...validateDocumentAgainstSchema(doc, schemaEntry.schema));
+        diagnostics.push(...validateDocumentAgainstSchema(doc, schemaEntry.schema, index));
       }
     }
   }
@@ -181,13 +181,14 @@ export function computeDiagnostics(
   if (index.schemaClassifiedUris.has(uri)) {
     const entry = index.schemaFiles.get(uri);
     if (entry?.parseError) {
-      const fallbackRange: Range =
+      const range: Range =
+        entry.parseErrorRange ??
         doc.roots[0]?.kindRange ?? {
           start: { line: 0, character: 0 },
           end: { line: 0, character: 1 },
         };
       diagnostics.push({
-        range: fallbackRange,
+        range,
         message: entry.parseError,
         severity: DiagnosticSeverity.Error,
         source: "indent-schema",

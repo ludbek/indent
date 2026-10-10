@@ -808,7 +808,7 @@ export function computeCompletions(
     // what's already observed in the workspace (handled by statsMap above).
     if (!isQuoted && currentKind) {
       const schema = getSchemaForDocument(index, uri);
-      const attrSchema = schema?.kinds.get(currentKind)?.attrs.get(attrName);
+      const attrSchema = schema?.elements.get(currentKind)?.attrs.get(attrName);
       if (attrSchema?.type === "boolean") {
         for (const boolLiteral of ["true", "false"]) {
           if (partial && !boolLiteral.startsWith(partial.toLowerCase())) continue;
@@ -887,10 +887,10 @@ export function computeCompletions(
 
       // Schema-driven attr-name suggestions, unioned with the above.
       const schema = getSchemaForDocument(index, uri);
-      const kindSchema = schema?.kinds.get(kindName);
-      if (kindSchema) {
+      const elementSchema = schema?.elements.get(kindName);
+      if (elementSchema) {
         const lowerPartial = partial.toLowerCase();
-        for (const [attrName, attrSchema] of kindSchema.attrs) {
+        for (const [attrName, attrSchema] of elementSchema.attrs) {
           if (suggestedAttrNames.has(attrName)) continue;
           if (partial && !attrName.toLowerCase().startsWith(lowerPartial)) continue;
           valueItems.push({
@@ -943,7 +943,7 @@ export function computeCompletions(
       const currentDepth = Math.round(leadingWhitespaceLen / INDENT_UNIT);
       const parentKind = findEnclosingKind(doc, position, currentDepth);
       const allowedChildren: Map<string, ChildRef> | undefined =
-        currentDepth === 0 ? schema.roots : schema.kinds.get(parentKind ?? "")?.children;
+        currentDepth === 0 ? schema.roots : schema.elements.get(parentKind ?? "")?.children;
       if (allowedChildren) {
         for (const kindName of allowedChildren.keys()) {
           if (suggestedKinds.has(kindName)) continue;
@@ -1001,9 +1001,9 @@ export function computeCompletions(
 
     // Schema-driven attr-name suggestions, unioned with the above.
     const schema = getSchemaForDocument(index, uri);
-    const kindSchema = schema?.kinds.get(stmt.kind);
-    if (kindSchema) {
-      for (const [attrName, attrSchema] of kindSchema.attrs) {
+    const elementSchema = schema?.elements.get(stmt.kind);
+    if (elementSchema) {
+      for (const [attrName, attrSchema] of elementSchema.attrs) {
         if (stmt.attrs[attrName]) continue;
         if (suggestedAttrs.has(attrName)) continue;
         if (partial && !attrName.toLowerCase().startsWith(lowerPartial)) continue;

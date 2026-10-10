@@ -4,13 +4,9 @@ import { URI } from "vscode-uri";
 import type { Range } from "vscode-languageserver";
 import { CstParser } from "./cst.js";
 import { parseXPath, selectNodes } from "indent-lang/xpath";
-import {
-  isSchemaDefinitionFile,
-  parseSchema,
-  SchemaDefinitionError,
-  type Schema,
-} from "indent-lang/schema";
+import { isSchemaDefinitionFile, type Schema } from "indent-lang/schema";
 import { buildXPathForest } from "./xpathTree.js";
+import { parseSchemaFromCst, SchemaCstDefinitionError } from "./schemaDefParser.js";
 import { findAllInmlFiles, findProjectRoot } from "./project.js";
 import type {
   AstDocument,
@@ -52,6 +48,13 @@ export interface IncludeLink {
 export interface SchemaFileEntry {
   schema?: Schema;
   parseError?: string;
+  /**
+   * Precise range of the parse error within the schema file, when available
+   * (always set for `SchemaCstDefinitionError`; absent only for truly
+   * unexpected error types, where callers should fall back to the first
+   * root statement's range).
+   */
+  parseErrorRange?: Range;
 }
 
 
@@ -395,14 +398,15 @@ export class WorkspaceIndex {
       if (!isSchemaDefinitionFile(docFsPath)) continue;
       this.schemaClassifiedUris.add(doc.uri);
       try {
-        const schema = parseSchema(doc.text);
+        const schema = parseSchemaFromCst(doc.roots);
         this.schemaFiles.set(doc.uri, { schema });
       } catch (err) {
         const message =
-          err instanceof SchemaDefinitionError || err instanceof Error
+          err instanceof SchemaCstDefinitionError || err instanceof Error
             ? err.message
             : String(err);
-        this.schemaFiles.set(doc.uri, { parseError: message });
+        const parseErrorRange = err instanceof SchemaCstDefinitionError ? err.range : undefined;
+        this.schemaFiles.set(doc.uri, { parseError: message, parseErrorRange });
       }
     }
 

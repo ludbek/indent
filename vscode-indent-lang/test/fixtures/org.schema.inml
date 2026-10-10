@@ -1,7 +1,7 @@
-kind "org"
+element "org"
     attr "name" type="string" required=true
-    kind //kind[.="service"] minCount=1
+    element //element[.="service"] minCount=1
 
-kind "service"
+element "service"
     attr "name" type="string" required=true
     attr "enabled" type="boolean"

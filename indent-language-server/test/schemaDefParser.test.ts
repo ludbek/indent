@@ -1,8 +1,19 @@
-import { describe, expect, it } from "vitest";
-import { parseSchema } from "../../src/schema/parse.js";
-import { SchemaDefinitionError } from "../../src/schema/types.js";
+import { describe, expect, it, beforeAll } from "vitest";
+import { CstParser } from "../src/cst.js";
+import { parseSchemaFromCst, SchemaCstDefinitionError } from "../src/schemaDefParser.js";
 
-describe("parseSchema", () => {
+let parser: CstParser;
+
+beforeAll(async () => {
+  parser = await CstParser.create();
+});
+
+const parse = (source: string) => {
+  const { doc } = parser.parse("file:///test.schema.inml", source);
+  return parseSchemaFromCst(doc.roots);
+};
+
+describe("parseSchemaFromCst", () => {
   it("parses a schema with attrs and references, applying cardinality defaults", () => {
     const source = `
 element "workspace"
@@ -16,7 +27,7 @@ element "person"
 element "system"
     attr "name" type="string" required=true
 `;
-    const schema = parseSchema(source);
+    const schema = parse(source);
 
     expect([...schema.elements.keys()].sort()).toEqual(["person", "system", "workspace"]);
 
@@ -33,8 +44,6 @@ element "system"
       maxCount: Infinity,
     });
 
-    // Every top-level element is implicitly allowed at the document root
-    // with the default (unbounded) cardinality.
     expect(schema.roots.get("workspace")).toEqual({
       element: "workspace",
       minCount: 0,
@@ -55,7 +64,7 @@ element "container"
 element "component"
     attr "name" type="string" required=true
 `;
-    const schema = parseSchema(source);
+    const schema = parse(source);
     expect(schema.elements.get("container")!.children.get("component")).toEqual({
       element: "component",
       minCount: 1,
@@ -68,7 +77,7 @@ element "component"
 element "container"
     element //element[.="container"]
 `;
-    const schema = parseSchema(source);
+    const schema = parse(source);
     const container = schema.elements.get("container")!;
     expect(container.children.get("container")).toEqual({
       element: "container",
@@ -86,7 +95,7 @@ element "->"
 element "node"
     element //element[.="->"]
 `;
-    const schema = parseSchema(source);
+    const schema = parse(source);
     expect(schema.elements.has("->")).toBe(true);
     expect(schema.elements.get("node")!.children.get("->")).toEqual({
       element: "->",
@@ -100,8 +109,8 @@ element "node"
 element "workspace"
     element //element[.="nonexistent"]
 `;
-    expect(() => parseSchema(source)).toThrow(SchemaDefinitionError);
-    expect(() => parseSchema(source)).toThrow(/could not resolve/i);
+    expect(() => parse(source)).toThrow(SchemaCstDefinitionError);
+    expect(() => parse(source)).toThrow(/could not resolve/i);
   });
 
   it("supports inline nested element definitions, registering them globally", () => {
@@ -111,15 +120,13 @@ element "org"
     element "team"
         attr "name" type="string" required=true
 `;
-    const schema = parseSchema(source);
+    const schema = parse(source);
     expect([...schema.elements.keys()].sort()).toEqual(["org", "team"]);
     expect(schema.elements.get("org")!.children.get("team")).toEqual({
       element: "team",
       minCount: 0,
       maxCount: Infinity,
     });
-    // Inline-nested definitions are NOT implicitly allowed at the document
-    // root -- only explicit top-level definitions are.
     expect(schema.roots.has("team")).toBe(false);
     expect(schema.roots.has("org")).toBe(true);
   });
@@ -130,7 +137,7 @@ element "org"
     element "team" minCount=1
         element "member" maxCount=5
 `;
-    const schema = parseSchema(source);
+    const schema = parse(source);
     expect([...schema.elements.keys()].sort()).toEqual(["member", "org", "team"]);
     expect(schema.elements.get("org")!.children.get("team")).toEqual({
       element: "team",
@@ -153,7 +160,7 @@ element "org"
 element "other"
     element //element[.="team"]
 `;
-    const schema = parseSchema(source);
+    const schema = parse(source);
     expect(schema.elements.get("other")!.children.get("team")).toEqual({
       element: "team",
       minCount: 0,
@@ -168,8 +175,8 @@ element "org"
     element "other"
         element "team"
 `;
-    expect(() => parseSchema(source)).toThrow(SchemaDefinitionError);
-    expect(() => parseSchema(source)).toThrow(/duplicate element definition 'team'/);
+    expect(() => parse(source)).toThrow(SchemaCstDefinitionError);
+    expect(() => parse(source)).toThrow(/duplicate element definition 'team'/);
   });
 
   it("throws when an inline nested definition tries to directly self-nest (must use a ref)", () => {
@@ -177,7 +184,7 @@ element "org"
 element "team"
     element "team"
 `;
-    expect(() => parseSchema(source)).toThrow(/duplicate element definition 'team'/);
+    expect(() => parse(source)).toThrow(/duplicate element definition 'team'/);
   });
 
   it("throws on duplicate top-level element definitions", () => {
@@ -185,7 +192,7 @@ element "team"
 element "person"
 element "person"
 `;
-    expect(() => parseSchema(source)).toThrow(/duplicate/i);
+    expect(() => parse(source)).toThrow(/duplicate/i);
   });
 
   it("throws on an invalid attr type=", () => {
@@ -193,7 +200,7 @@ element "person"
 element "person"
     attr "name" type="weird"
 `;
-    expect(() => parseSchema(source)).toThrow(SchemaDefinitionError);
+    expect(() => parse(source)).toThrow(SchemaCstDefinitionError);
   });
 
   it("throws on invalid cardinality (minCount > maxCount)", () => {
@@ -203,7 +210,7 @@ element "workspace"
 
 element "person"
 `;
-    expect(() => parseSchema(source)).toThrow(SchemaDefinitionError);
+    expect(() => parse(source)).toThrow(SchemaCstDefinitionError);
   });
 
   it("throws on negative minCount or maxCount < 1", () => {
@@ -213,7 +220,7 @@ element "workspace"
 
 element "person"
 `;
-    expect(() => parseSchema(negative)).toThrow(SchemaDefinitionError);
+    expect(() => parse(negative)).toThrow(SchemaCstDefinitionError);
 
     const zeroMax = `
 element "workspace"
@@ -221,7 +228,7 @@ element "workspace"
 
 element "person"
 `;
-    expect(() => parseSchema(zeroMax)).toThrow(SchemaDefinitionError);
+    expect(() => parse(zeroMax)).toThrow(SchemaCstDefinitionError);
   });
 
   it("throws when a non-element/attr line appears inside an element definition", () => {
@@ -229,12 +236,12 @@ element "person"
 element "person"
     bogus "x"
 `;
-    expect(() => parseSchema(source)).toThrow(SchemaDefinitionError);
+    expect(() => parse(source)).toThrow(SchemaCstDefinitionError);
   });
 
   it("throws when a root-level line isn't an 'element' node", () => {
     const source = `attr "name" type="string"\n`;
-    expect(() => parseSchema(source)).toThrow(SchemaDefinitionError);
+    expect(() => parse(source)).toThrow(SchemaCstDefinitionError);
   });
 
   it("parses a 'value type=' declaration, defaulting required to false", () => {
@@ -242,7 +249,7 @@ element "person"
 element "team"
     value type="string"
 `;
-    const schema = parseSchema(source);
+    const schema = parse(source);
     expect(schema.elements.get("team")!.value).toEqual({ type: "string", required: false });
   });
 
@@ -251,7 +258,7 @@ element "team"
 element "team"
     value type="string" required=true
 `;
-    const schema = parseSchema(source);
+    const schema = parse(source);
     expect(schema.elements.get("team")!.value).toEqual({ type: "string", required: true });
   });
 
@@ -261,7 +268,7 @@ element "team"
     value type="string"
     value type="number"
 `;
-    expect(() => parseSchema(source)).toThrow(/duplicate 'value' declaration/);
+    expect(() => parse(source)).toThrow(/duplicate 'value' declaration/);
   });
 
   it("throws when 'value' carries a positional name", () => {
@@ -269,7 +276,7 @@ element "team"
 element "team"
     value "oops" type="string"
 `;
-    expect(() => parseSchema(source)).toThrow(SchemaDefinitionError);
+    expect(() => parse(source)).toThrow(SchemaCstDefinitionError);
   });
 
   it("throws on an invalid 'value' type=", () => {
@@ -277,7 +284,7 @@ element "team"
 element "team"
     value type="weird"
 `;
-    expect(() => parseSchema(source)).toThrow(SchemaDefinitionError);
+    expect(() => parse(source)).toThrow(SchemaCstDefinitionError);
   });
 
   it("supports a ref-constrained attr type= resolving to a declared element", () => {
@@ -288,7 +295,7 @@ element "org"
 element "team"
     attr "name" type="string" required=true
 `;
-    const schema = parseSchema(source);
+    const schema = parse(source);
     expect(schema.elements.get("org")!.attrs.get("team")).toEqual({
       name: "team",
       type: "ref",
@@ -304,7 +311,7 @@ element "org"
     element "team"
         attr "name" type="string" required=true
 `;
-    const schema = parseSchema(source);
+    const schema = parse(source);
     expect(schema.elements.get("org")!.attrs.get("team")!.refElement).toBe("team");
   });
 
@@ -313,19 +320,7 @@ element "org"
 element "org"
     attr "team" type=//element[.="nonexistent"]
 `;
-    expect(() => parseSchema(source)).toThrow(/could not resolve/i);
-  });
-
-  it("supports a wildcard '//*' xpath ref, matching any node", () => {
-    const source = `
-element "org"
-    attr "team" type=//*[.="team"]
-
-element "team"
-    attr "name" type="string" required=true
-`;
-    const schema = parseSchema(source);
-    expect(schema.elements.get("org")!.attrs.get("team")!.refElement).toBe("team");
+    expect(() => parse(source)).toThrow(/could not resolve/i);
   });
 
   it("supports a ref-constrained value type= resolving to a declared element", () => {
@@ -336,7 +331,7 @@ element "service"
 element "team"
     attr "name" type="string" required=true
 `;
-    const schema = parseSchema(source);
+    const schema = parse(source);
     expect(schema.elements.get("service")!.value).toEqual({
       type: "ref",
       required: false,
@@ -349,6 +344,59 @@ element "team"
 element "service"
     value type=//element[.="nonexistent"]
 `;
-    expect(() => parseSchema(source)).toThrow(/could not resolve/i);
+    expect(() => parse(source)).toThrow(/could not resolve/i);
+  });
+
+  it("supports a wildcard '//*' xpath ref, matching any node", () => {
+    const source = `
+element "service"
+    attr "team" type=//*[.="team"]
+
+element "team"
+    attr "name" type="string" required=true
+`;
+    const schema = parse(source);
+    expect(schema.elements.get("service")!.attrs.get("team")!.refElement).toBe("team");
+  });
+
+  it("anchors an unparsable xpath ref error (e.g. '/*foo') at the offending type= range, not line 0", () => {
+    const source = `element "org"
+    attr "name" type="string" required=true
+
+element "service"
+    attr "team" type=//*foo
+`;
+    try {
+      parse(source);
+      expect.fail("expected parse to throw");
+    } catch (err) {
+      expect(err).toBeInstanceOf(SchemaCstDefinitionError);
+      expect((err as Error).message).toMatch(/could not resolve/i);
+      const cstErr = err as SchemaCstDefinitionError;
+      // The offending line ("attr \"team\" type=//*foo") is line index 4 (0-based).
+      expect(cstErr.range.start.line).toBe(4);
+      expect(cstErr.range.start.line).not.toBe(0);
+    }
+  });
+
+  it("anchors the thrown error's range at the actual offending nested line, not line 0", () => {
+    const source = `element "org"
+    attr "name" type="string" required=true
+    element //element[.="service"] minCount=1
+
+element "service"
+    attr "name" type="string" required=true
+    attr "team" type="weird"
+`;
+    try {
+      parse(source);
+      expect.fail("expected parse to throw");
+    } catch (err) {
+      expect(err).toBeInstanceOf(SchemaCstDefinitionError);
+      const cstErr = err as SchemaCstDefinitionError;
+      // The offending line ("attr \"team\" type=\"weird\"") is line index 6 (0-based).
+      expect(cstErr.range.start.line).toBe(6);
+      expect(cstErr.range.start.line).not.toBe(0);
+    }
   });
 });

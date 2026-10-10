@@ -155,7 +155,7 @@ export function getHover(
   const stmt = index.getStatementAtPosition(uri, position);
   if (stmt) {
     const schema = getSchemaForDocument(index, uri);
-    const kindSchema = schema?.kinds.get(stmt.kind);
+    const elementSchema = schema?.elements.get(stmt.kind);
     const node = index.nodesById.get(stmt.id);
     if (node) {
       const lines = [
@@ -168,7 +168,7 @@ export function getHover(
 
       const attrList = Object.entries(node.attrs)
         .map(([k, v]) => {
-          const attrSchema = kindSchema?.attrs.get(k);
+          const attrSchema = elementSchema?.attrs.get(k);
           const schemaNote = attrSchema
             ? ` _(${attrSchema.required ? "required" : "optional"} ${attrSchema.type}, schema)_`
             : "";
@@ -179,19 +179,19 @@ export function getHover(
         lines.push(`**Attributes:**\n${attrList}`);
       }
 
-      if (kindSchema) {
-        const schemaAttrLines = Array.from(kindSchema.attrs.entries())
+      if (elementSchema) {
+        const schemaAttrLines = Array.from(elementSchema.attrs.entries())
           .filter(([name]) => !(name in node.attrs))
           .map(([name, a]) => `- \`${name}\`: ${a.required ? "required" : "optional"} ${a.type}`);
         if (schemaAttrLines.length > 0) {
           lines.push(`**Other schema attrs for '${stmt.kind}':**\n${schemaAttrLines.join("\n")}`);
         }
-        const childKinds = Array.from(kindSchema.children.keys());
+        const childKinds = Array.from(elementSchema.children.keys());
         if (childKinds.length > 0) {
           lines.push(`**Allowed children (schema):** ${childKinds.map((k) => `\`${k}\``).join(", ")}`);
         }
-      } else if (schema && !schema.kinds.has(stmt.kind) && !schema.roots.has(stmt.kind)) {
-        lines.push(`_Kind \`${stmt.kind}\` is not declared in the bound schema._`);
+      } else if (schema && !schema.elements.has(stmt.kind) && !schema.roots.has(stmt.kind)) {
+        lines.push(`_Element \`${stmt.kind}\` is not declared in the bound schema._`);
       }
 
       // Show inbound references pointing to this node
