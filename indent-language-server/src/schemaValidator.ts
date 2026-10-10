@@ -56,7 +56,7 @@ export function validateDocumentAgainstSchema(
   function checkRefTargetKind(
     stmt: AstStatement,
     attrName: string | undefined,
-    refElement: string,
+    refElement: string[],
     range: AstStatement["kindRange"],
     describeWhat: string,
   ) {
@@ -80,13 +80,17 @@ export function validateDocumentAgainstSchema(
 
     const mismatched = ref.resolvedTargetPaths
       .map((path) => index.getNodeByPath(path)?.kind)
-      .filter((kind): kind is string => kind !== undefined && kind !== refElement);
+      .filter((kind): kind is string => kind !== undefined && !refElement.includes(kind));
     if (mismatched.length > 0) {
       const uniqueMismatched = [...new Set(mismatched)];
+      const expected =
+        refElement.length > 1
+          ? `one of kind '${refElement.join("', '")}'`
+          : `an element of kind '${refElement[0]}'`;
       diagnostics.push({
         severity: DiagnosticSeverity.Error,
         range,
-        message: `${describeWhat}: ref '${ref.rawRef}' must resolve to an element of kind '${refElement}', resolved to '${uniqueMismatched.join("', '")}'`,
+        message: `${describeWhat}: ref '${ref.rawRef}' must resolve to ${expected}, resolved to '${uniqueMismatched.join("', '")}'`,
         source: "indent-schema",
       });
     }

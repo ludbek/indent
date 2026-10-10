@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { parse } from "../parser.js";
 import { selectNodes } from "../xpath/evaluate.js";
+import { parseXPath } from "../xpath/parser.js";
 import type { XPathNode } from "../xpath/types.js";
 import type { IndentNode, RefValue } from "../types.js";
 import {
@@ -26,23 +27,30 @@ function isRefValue(value: unknown): value is RefValue {
 
 /**
  * Resolves an xpath self-axis ref (e.g. `//element[.="team"]`) against the
- * schema's own root nodes to the single declared element name it points
- * at. Shared by child-element references, and by `attr`/`value` `type=`
- * ref-constraints -- all three use the exact same resolution semantics:
- * match string-valued `element` definition nodes, require exactly one.
+ * schema's own root nodes to the declared element name(s) it points at, as
+ * a node-set-style array -- matching standard xpath semantics, where a
+ * query always yields a collection regardless of cardinality (0, 1, or
+ * many). Shared by child-element references, and by `attr`/`value` `type=`
+ * ref-constraints.
+ *
+ * Matching more than one declared element is only permitted when the raw
+ * xpath contains a wildcard (`*`) step *and* the caller opts in via
+ * `allowMultiple` (set for `type=` ref-constraints, which can model a set
+ * of allowed target kinds; not set for child-element references, which
+ * only ever name a single element to nest). Otherwise >1 match is treated
+ * as a likely authoring mistake and rejected as ambiguous.
  */
 function resolveElementRef(
   schemaRoots: IndentNode[],
   raw: string,
   describeWhat: string,
-): string {
-  // `selectNodes` is generic over `XPathNode`, whose `value` type doesn't
-  // include `RefValue` (xpath stays decoupled from Indent's concrete value
-  // typing). Schema files only ever self-match against string-valued
-  // `element "name"` definitions, so this cast is safe here.
-  let matches: IndentNode[];
+  options?: { allowMultiple?: boolean },
+): string[] {
+  const allowMultiple = options?.allowMultiple ?? false;
+
+  let parsed;
   try {
-    matches = selectNodes(schemaRoots as unknown as XPathNode[], raw) as unknown as IndentNode[];
+    parsed = parseXPath(raw);
   } catch {
     // An unparsable xpath (e.g. a typo'd `type=//*`) is reported the same
     // way as a syntactically valid ref that resolves to nothing -- this
@@ -52,18 +60,26 @@ function resolveElementRef(
     // `schemaDefParser.ts` anchors this same failure to a precise range.
     throw new SchemaDefinitionError(`could not resolve ${describeWhat} '${raw}' to a declared element`);
   }
-  const defMatches = matches.filter((m) => m.kind === "element" && typeof m.value === "string");
+  const isWildcard = parsed.steps.some((step) => step.name === "*");
 
-  if (defMatches.length === 0) {
+  // `selectNodes` is generic over `XPathNode`, whose `value` type doesn't
+  // include `RefValue` (xpath stays decoupled from Indent's concrete value
+  // typing). Schema files only ever self-match against string-valued
+  // `element "name"` definitions, so this cast is safe here.
+  const matches = selectNodes(schemaRoots as unknown as XPathNode[], parsed) as unknown as IndentNode[];
+  const defMatches = matches.filter((m) => m.kind === "element" && typeof m.value === "string");
+  const names = [...new Set(defMatches.map((m) => m.value as string))];
+
+  if (names.length === 0) {
     throw new SchemaDefinitionError(`could not resolve ${describeWhat} '${raw}' to a declared element`);
   }
-  if (defMatches.length > 1) {
+  if (names.length > 1 && !(allowMultiple && isWildcard)) {
     throw new SchemaDefinitionError(
-      `${describeWhat} '${raw}' is ambiguous -- it matches ${defMatches.length} declared elements`,
+      `${describeWhat} '${raw}' is ambiguous -- it matches ${names.length} declared elements`,
     );
   }
 
-  return defMatches[0].value as string;
+  return names;
 }
 
 /**
@@ -120,18 +136,21 @@ function parseCardinality(
  * either one of the plain `AttrType` string literals, or an xpath self-axis
  * ref (e.g. `type=//element[.="team"]`) constraining a `"ref"`-typed
  * attribute/value to resolve (in the document being validated) to a node
- * of that specific declared element.
+ * of one of the declared element(s) the ref matches here (a set, when the
+ * ref's a wildcard matching several; a singleton array otherwise).
  */
 function parseTypeDef(
   schemaRoots: IndentNode[],
   rawType: unknown,
   describeWhat: string,
-): { type: AttrType; refElement?: string } {
+): { type: AttrType; refElement?: string[] } {
   if (typeof rawType === "string" && ATTR_TYPES.includes(rawType as AttrType)) {
     return { type: rawType as AttrType };
   }
   if (isRefValue(rawType)) {
-    const refElement = resolveElementRef(schemaRoots, rawType.raw, `${describeWhat} type ref`);
+    const refElement = resolveElementRef(schemaRoots, rawType.raw, `${describeWhat} type ref`, {
+      allowMultiple: true,
+    });
     return { type: "ref", refElement };
   }
   throw new SchemaDefinitionError(
@@ -315,7 +334,7 @@ export function parseSchema(source: string): Schema {
           // name; just wire it up as a child here.
           resolvedName = child.value;
         } else if (isRefValue(child.value)) {
-          resolvedName = resolveElementRef(schemaRoots, child.value.raw, "child element reference");
+          [resolvedName] = resolveElementRef(schemaRoots, child.value.raw, "child element reference");
         } else {
           throw new SchemaDefinitionError(
             `a nested 'element' line must either inline-define a new element (e.g. 'element "name"') or reference a declared element via an xpath self-axis ref (e.g. 'element //element[.="name"]'), got a plain value instead`,

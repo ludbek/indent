@@ -53,15 +53,19 @@ function resolveRefTargetKinds(roots: IndentNode[], raw: string): string[] {
  * tree and checking every match's kind. Returns an error message describing
  * the violation, or `undefined` if the constraint is satisfied.
  */
-function checkRefTargetKind(roots: IndentNode[], raw: string, refElement: string): string | undefined {
+function checkRefTargetKind(roots: IndentNode[], raw: string, refElement: string[]): string | undefined {
   const targetKinds = resolveRefTargetKinds(roots, raw);
   if (targetKinds.length === 0) {
     return `ref '${raw}' does not resolve to any node in the document`;
   }
-  const mismatched = targetKinds.filter((k) => k !== refElement);
+  const mismatched = targetKinds.filter((k) => !refElement.includes(k));
   if (mismatched.length > 0) {
     const uniqueMismatched = [...new Set(mismatched)];
-    return `ref '${raw}' must resolve to an element of kind '${refElement}', resolved to '${uniqueMismatched.join("', '")}'`;
+    const expected =
+      refElement.length > 1
+        ? `one of kind '${refElement.join("', '")}'`
+        : `an element of kind '${refElement[0]}'`;
+    return `ref '${raw}' must resolve to ${expected}, resolved to '${uniqueMismatched.join("', '")}'`;
   }
   return undefined;
 }

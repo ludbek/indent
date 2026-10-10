@@ -12,13 +12,17 @@ export interface AttrSchema {
   /**
    * When `type` is `"ref"` and the attr's `type=` was declared as an xpath
    * self-axis ref (e.g. `attr "name" type=//element[.="team"]`) rather than
-   * the plain `type="ref"` literal, this holds the resolved name of the
-   * element the ref's target must match. Validation then checks not just
-   * that the attribute's value is *a* ref, but that it resolves (in the
-   * document being validated) to a node of this specific element. Absent
-   * for a plain, unconstrained `type="ref"`.
+   * the plain `type="ref"` literal, this holds the declared element
+   * name(s) the ref's target must match -- mirroring xpath's own node-set
+   * semantics, where a query always yields a collection regardless of
+   * cardinality. Validation then checks not just that the attribute's
+   * value is *a* ref, but that it resolves (in the document being
+   * validated) to a node whose kind is one of these. A plain, non-wildcard
+   * ref resolves to a single-element array; only a wildcard (`*`) ref can
+   * resolve to more than one. Absent for a plain, unconstrained
+   * `type="ref"`.
    */
-  refElement?: string;
+  refElement?: string[];
 }
 
 /**
@@ -35,7 +39,7 @@ export interface ValueSchema {
    * Same ref-target-kind constraint as `AttrSchema.refElement`, but for the
    * element's own positional value, e.g. `value type=//element[.="team"]`.
    */
-  refElement?: string;
+  refElement?: string[];
 }
 
 /**

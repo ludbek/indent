@@ -293,7 +293,7 @@ element "team"
       name: "team",
       type: "ref",
       required: false,
-      refElement: "team",
+      refElement: ["team"],
     });
   });
 
@@ -305,7 +305,7 @@ element "org"
         attr "name" type="string" required=true
 `;
     const schema = parseSchema(source);
-    expect(schema.elements.get("org")!.attrs.get("team")!.refElement).toBe("team");
+    expect(schema.elements.get("org")!.attrs.get("team")!.refElement).toEqual(["team"]);
   });
 
   it("throws when a ref-constrained attr type= cannot be resolved", () => {
@@ -325,7 +325,36 @@ element "team"
     attr "name" type="string" required=true
 `;
     const schema = parseSchema(source);
-    expect(schema.elements.get("org")!.attrs.get("team")!.refElement).toBe("team");
+    expect(schema.elements.get("org")!.attrs.get("team")!.refElement).toEqual(["team"]);
+  });
+
+  it("allows a wildcard '//*' type= ref to match several declared elements, collecting them all", () => {
+    const source = `
+element "org"
+    attr "member" type=//*
+
+element "team"
+    attr "name" type="string" required=true
+
+element "service"
+    attr "name" type="string" required=true
+`;
+    const schema = parseSchema(source);
+    expect(schema.elements.get("org")!.attrs.get("member")!.refElement).toEqual(["org", "team", "service"]);
+  });
+
+  it("throws when a non-wildcard ref resolves to more than one declared element", () => {
+    const source = `
+element "org"
+    attr "member" type=//element
+
+element "team"
+    attr "name" type="string" required=true
+
+element "service"
+    attr "name" type="string" required=true
+`;
+    expect(() => parseSchema(source)).toThrow(/is ambiguous -- it matches 3 declared elements/i);
   });
 
   it("supports a ref-constrained value type= resolving to a declared element", () => {
@@ -340,7 +369,7 @@ element "team"
     expect(schema.elements.get("service")!.value).toEqual({
       type: "ref",
       required: false,
-      refElement: "team",
+      refElement: ["team"],
     });
   });
 

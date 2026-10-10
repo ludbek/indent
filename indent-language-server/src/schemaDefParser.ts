@@ -1,5 +1,5 @@
 import type { Range } from "vscode-languageserver";
-import { selectNodes } from "indent-lang/xpath";
+import { parseXPath, selectNodes } from "indent-lang/xpath";
 import type { XPathNode } from "indent-lang/xpath";
 import type {
   AttrSchema,
@@ -62,48 +62,64 @@ function toXPathNode(stmt: AstStatement): XPathNode {
 
 /**
  * Resolves an xpath self-axis ref (e.g. `//element[.="team"]`) against the
- * schema's own root statements to the single declared element name it
- * points at. Shared by child-element references and `attr`/`value` `type=`
- * ref-constraints.
+ * schema's own root statements to the declared element name(s) it points
+ * at, as a node-set-style array -- matching standard xpath semantics,
+ * where a query always yields a collection regardless of cardinality (0,
+ * 1, or many). Shared by child-element references and `attr`/`value`
+ * `type=` ref-constraints.
+ *
+ * Matching more than one declared element is only permitted when the raw
+ * xpath contains a wildcard (`*`) step *and* the caller opts in via
+ * `allowMultiple` (set for `type=` ref-constraints; not set for
+ * child-element references, which only ever name a single element to
+ * nest). Otherwise >1 match is treated as a likely authoring mistake and
+ * rejected as ambiguous.
  */
 function resolveElementRef(
   schemaRoots: AstStatement[],
   raw: string,
   range: Range,
   describeWhat: string,
-): string {
+  options?: { allowMultiple?: boolean },
+): string[] {
+  const allowMultiple = options?.allowMultiple ?? false;
   const forest = schemaRoots.map(toXPathNode);
-  let matches: XPathNode[];
+
+  let parsed;
   try {
-    matches = selectNodes(forest, raw);
+    parsed = parseXPath(raw);
   } catch {
-    // Covers both an unparsable xpath (e.g. a typo'd `type=//*`) and any
-    // other resolution failure -- surfaced with the same message as a
-    // syntactically valid ref that simply resolves to nothing, anchored
-    // at the offending `type=`/ref range rather than left to escape
-    // uncaught (which would otherwise fall back to the document's first
-    // root statement -- see indexer.ts's `SchemaCstDefinitionError` catch).
+    // Covers an unparsable xpath (e.g. a typo'd `type=//*`), surfaced with
+    // the same message as a syntactically valid ref that simply resolves
+    // to nothing, anchored at the offending `type=`/ref range rather than
+    // left to escape uncaught (which would otherwise fall back to the
+    // document's first root statement -- see indexer.ts's
+    // `SchemaCstDefinitionError` catch).
     throw new SchemaCstDefinitionError(
       `could not resolve ${describeWhat} '${raw}' to a declared element`,
       range,
     );
   }
+  const isWildcard = parsed.steps.some((step) => step.name === "*");
+
+  const matches = selectNodes(forest, parsed);
   const defMatches = matches.filter((m) => m.kind === "element" && typeof m.value === "string");
+  const names = [...new Set(defMatches.map((m) => m.value as string))];
 
-  if (defMatches.length === 0) {
+  if (names.length === 0) {
     throw new SchemaCstDefinitionError(
       `could not resolve ${describeWhat} '${raw}' to a declared element`,
       range,
     );
   }
-  if (defMatches.length > 1) {
+  if (names.length > 1 && !(allowMultiple && isWildcard)) {
     throw new SchemaCstDefinitionError(
-      `${describeWhat} '${raw}' is ambiguous -- it matches ${defMatches.length} declared elements`,
+      `${describeWhat} '${raw}' is ambiguous -- it matches ${names.length} declared elements`,
       range,
     );
   }
 
-  return defMatches[0].value as string;
+  return names;
 }
 
 /**
@@ -162,13 +178,13 @@ function parseCardinality(stmt: AstStatement): { minCount: number; maxCount: num
  * either one of the plain `AttrType` string literals, or an xpath self-axis
  * ref (e.g. `type=//element[.="team"]`) constraining a `"ref"`-typed
  * attribute/value to resolve (in the document being validated) to a node
- * of that specific declared element.
+ * of one of the declared element(s) the ref matches here.
  */
 function parseTypeDef(
   schemaRoots: AstStatement[],
   stmt: AstStatement,
   describeWhat: string,
-): { type: AttrType; refElement?: string } {
+): { type: AttrType; refElement?: string[] } {
   const typeAttr = stmt.attrs.type;
   if (typeAttr && typeAttr.valueType === "string" && ATTR_TYPES.includes(typeAttr.value as AttrType)) {
     return { type: typeAttr.value as AttrType };
@@ -179,6 +195,7 @@ function parseTypeDef(
       typeAttr.valueRaw,
       typeAttr.valueRange,
       `${describeWhat} type ref`,
+      { allowMultiple: true },
     );
     return { type: "ref", refElement };
   }
@@ -335,7 +352,7 @@ export function parseSchemaFromCst(schemaRoots: AstStatement[]): Schema {
         if (child.value?.valueType === "string") {
           resolvedName = child.value.value as string;
         } else if (isRefValue(child)) {
-          resolvedName = resolveElementRef(
+          [resolvedName] = resolveElementRef(
             schemaRoots,
             child.value!.valueRaw,
             child.value!.range,
