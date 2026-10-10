@@ -6,6 +6,8 @@ export default defineConfig({
     "src/cli.ts",
     "src/xpath/index.ts",
     "src/schema/index.ts",
+    "src/schema/resolve.ts",
+    "src/cstWalker.ts",
   ],
   format: ["esm", "cjs"],
   dts: true,

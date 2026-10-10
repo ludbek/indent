@@ -33,6 +33,16 @@
       "types": "./dist/schema/index.d.ts",
       "import": "./dist/schema/index.js",
       "require": "./dist/schema/index.cjs"
+    },
+    "./schema/resolve": {
+      "types": "./dist/schema/resolve.d.ts",
+      "import": "./dist/schema/resolve.js",
+      "require": "./dist/schema/resolve.cjs"
+    },
+    "./cst": {
+      "types": "./dist/cstWalker.d.ts",
+      "import": "./dist/cstWalker.js",
+      "require": "./dist/cstWalker.cjs"
     }
   },
   "files": [
@@ -43,5 +53,9 @@
     "build": "tsup",
     "test": "vitest run",
     "test:watch": "vitest"
+  },
+  "dependencies": {
+    "tree-sitter": "^0.25.0",
+    "treesitter-indent": "^0.2.1"
   }
 }

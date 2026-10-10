@@ -3,7 +3,12 @@
  * @author Suren
  * @license MIT
  *
- * Grammar shape (mirrors indent-lang/src/tokenizer.ts + parser.ts):
+ * This grammar is the single source of truth for lexical analysis of
+ * .inml source: indent-lang's indent-lang/src/tokenizer.ts delegates to it
+ * (via indent-lang/src/cstParser.ts) rather than re-implementing its own
+ * scanner, and indent-language-server's indent-language-server/src/cst.ts
+ * shares the same CST-walking code (indent-lang/src/cstParser.ts's
+ * walkCstTree) against the web-tree-sitter/WASM binding. Grammar shape:
  *
  *   statement := <type> (key=value)*  NEWLINE (INDENT statement+ DEDENT)?
  *   value     := string | number | boolean
