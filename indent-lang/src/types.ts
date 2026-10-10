@@ -88,9 +88,16 @@ export class IndentParseError extends Error {
    */
   public readonly file?: string;
 
-  constructor(message: string, public readonly line: number, file?: string) {
+  /**
+   * 0-based column offset within `line`, when known (e.g. from a CST-backed
+   * syntax error). Not set by most parse errors, which only carry a line.
+   */
+  public readonly character?: number;
+
+  constructor(message: string, public readonly line: number, file?: string, character?: number) {
     super(file ? `${file}:${line}: ${message}` : `Line ${line}: ${message}`);
     this.name = "IndentParseError";
     this.file = file;
+    this.character = character;
   }
 }

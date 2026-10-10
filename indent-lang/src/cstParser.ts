@@ -267,16 +267,21 @@ export function parseCst(source: string): CstParseResult {
   return { roots, errors };
 }
 
+/** Projects a `CstIndentNode`'s `attrs` map down to the plain legacy `AttrValue` shape. */
+export function cstAttrsToPlain(attrs: Record<string, CstAttribute>): Record<string, AttrValue> {
+  const result: Record<string, AttrValue> = {};
+  for (const [name, attr] of Object.entries(attrs)) {
+    result[name] = attr.valueType === "ref" ? { type: "ref", raw: attr.valueRaw } : attr.value;
+  }
+  return result;
+}
+
 /** Projects a `CstIndentNode` down to the plain legacy `IndentNode` shape. */
 export function toIndentNode(node: CstIndentNode): IndentNode {
-  const attrs: Record<string, AttrValue> = {};
-  for (const [name, attr] of Object.entries(node.attrs)) {
-    attrs[name] = attr.valueType === "ref" ? { type: "ref", raw: attr.valueRaw } : attr.value;
-  }
   return {
     kind: node.kind,
     ...(node.value !== undefined ? { value: node.value } : {}),
-    attrs,
+    attrs: cstAttrsToPlain(node.attrs),
     children: node.children.map(toIndentNode),
   };
 }
