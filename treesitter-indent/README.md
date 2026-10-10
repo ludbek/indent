@@ -5,8 +5,8 @@ Tree-sitter grammar for Indent Markup Language.
 ## Grammar shape
 
 The grammar is intentionally generic -- there is no special-cased
-"edge"/"reference"/"include" concept at this layer, matching the hand-written
-parser in `indent-lang`:
+"edge"/"reference"/"include" concept at this layer; that meaning is assigned
+entirely by downstream consumers (`indent-lang`, `indent-language-server`):
 
 ```
 document  := NEWLINE? statement*

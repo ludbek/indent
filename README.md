@@ -151,9 +151,32 @@ system "Ordering System"
 | Package | Description |
 | --- | --- |
 | [`indent-lang`](./indent-lang/README.md) | Parser, XPath-like selector, and schema validator for the Indent Markup Language. |
-| [`treesitter-indent`](./treesitter-indent/README.md) | Tree-sitter grammar for the Indent Markup Language. |
+| [`treesitter-indent`](./treesitter-indent/README.md) | Tree-sitter grammar for the Indent Markup Language — single source of truth for lexing/parsing, shared by `indent-lang` (native binding) and `indent-language-server` (WASM binding). |
 | [`indent-language-server`](./indent-language-server/README.md) | Language Server Protocol implementation for the Indent Markup Language. |
 | [`vscode-indent-lang`](./vscode-indent-lang/README.md) | VS Code syntax highlighting extension for the Indent Markup Language. |
+
+## Architecture
+
+`treesitter-indent`'s `grammar.js` is the single source of truth for lexing
+and parsing `.inml` source. Both consumers walk the same tree-sitter CST via
+the shared walker in `indent-lang/src/cstParser.ts` (published as the
+`indent-lang/cst` subpath export):
+
+- `indent-lang` uses the **native** `tree-sitter` Node binding
+  (`treesitter-indent`'s `bindings/node`) for synchronous, dependency-light
+  parsing from the CLI/library API. `tokenizer.ts` flattens the CST into the
+  legacy `LineToken[]` shape so the existing `parser.ts` (indentation-stack
+  tree builder) and `resolver.ts` (`!include`/`!schema` resolution) keep
+  working unchanged.
+- `indent-language-server` uses the **WASM** `web-tree-sitter` binding
+  (`treesitter-indent`'s compiled `.wasm`) so it can run portably across
+  editor hosts/browsers and keep the parsed `Tree` object around for future
+  incremental re-parsing. It calls the shared `walkCstTree()` directly and
+  layers only its own LSP-specific fields (`id`, `uri`, `parent`) on top via
+  a thin adapter.
+
+There is no longer a hand-written lexer/parser duplicated between packages —
+`treesitter-indent/grammar.js` is written once and consumed twice.
 
 ## Development
 
