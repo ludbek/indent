@@ -3,7 +3,6 @@ import { defineConfig } from "tsup";
 export default defineConfig({
   entry: [
     "src/index.ts",
-    "src/cli.ts",
     "src/xpath/index.ts",
     "src/schema/index.ts",
     "src/schema/resolve.ts",
