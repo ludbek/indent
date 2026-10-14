@@ -1,29 +1,6 @@
 /**
- * A parsed ref value -- an XPath-like reference to another node in the
- * tree, e.g. `entity=/Member/Rollover` or `entity=//Rollover[type="REST"]`.
- * A ref can also be used as a node's own positional value, e.g.
- * `alias /Member/Rollover`.
- *
- * Only the `raw` source text is kept; it is not parsed into steps (parsing
- * is done downstream by the `indent-lang`'s xpath module package). This is a simplified
- * subset of XPath syntax intended as a native reference mechanism between
- * nodes in the tree (e.g. for the Language Server), supporting:
- *
- * - Absolute path: `/Member/Rollover`
- * - Descendant (anywhere in the tree): `//Rollover`
- * - Mid-path descendant: `/Member//Rollover`
- * - Attribute existence predicate: `Member[name]`
- * - Attribute equality predicate: `Member[name="Rollover"]`
- * - Comma-separated multi-predicate AND list: `Member[name="Rollover",port=8080]`
- * - Self-value predicate (matches a node's own positional value): `Member[.="Rollover"]`
- * - Positional index predicate (0-based, among same-kind siblings/matches): `Member[0]`
- *
- * It does not support the full XPath grammar: no bare relative paths
- * (a leading `/` or `//` is always required), no `..` parent axis, no `.`
- * or `@name` as standalone steps, no wildcard `*`, no multiple separate
- * bracket groups on one step (`[a][b]` -- use `[a,b]` instead), and no
- * `name=value` self-value shorthand (use the bracketed `[.=value]` form
- * instead).
+ * Starts with // or /. It is used to reference elements in a tree.
+ * A subset of XML xpath
  */
 export interface RefValue {
   type: "ref";
