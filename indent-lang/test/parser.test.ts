@@ -48,8 +48,8 @@ describe("parse", () => {
     const source = readFileSync(join(__dirname, "fixtures/sample.inml"), "utf8");
     const result = parse(source);
 
-    expect(result.roots).toHaveLength(2);
-    const org = result.roots[0];
+    expect(result.roots).toHaveLength(3);
+    const org = result.roots[1];
     expect(org).toMatchObject({ kind: "org", attrs: { name: "Acme", color: "green" } });
     expect(org.children.map((c) => c.kind)).toEqual(["team", "team", "service"]);
 
@@ -59,35 +59,35 @@ describe("parse", () => {
 
     const api = service.children[0];
     expect(api.kind).toBe("API");
-    expect(api.attrs.name).toBe("rollover");
+    expect(api.attrs.name).toBe("login");
     expect(api.children).toHaveLength(1);
 
     const ref = api.children[0];
     expect(ref).toEqual({
       kind: "->",
-      attrs: { entity: "Globex/super/rollover" },
+      attrs: { entity: "Globex/auth/login" },
       children: [],
     });
 
-    const globexOrg = result.roots[1];
+    const globexOrg = result.roots[2];
     expect(globexOrg).toMatchObject({ kind: "org", attrs: { name: "Globex" } });
     expect(globexOrg.children).toHaveLength(1);
 
     const globexService = globexOrg.children[0];
     expect(globexService.kind).toBe("service");
-    expect(globexService.attrs.name).toBe("super");
+    expect(globexService.attrs.name).toBe("auth");
     expect(globexService.children).toHaveLength(1);
 
     const globexApi = globexService.children[0];
-    expect(globexApi).toEqual({ kind: "API", attrs: { name: "rollover" }, children: [] });
+    expect(globexApi).toEqual({ kind: "API", attrs: { name: "login" }, children: [] });
   });
 
   it("parses spaces indentation, inline comments, and => edges", () => {
     const input = `org name="Org" color="green"
     team name="Foo"
     service name="user-service"
-        API name="Rollover" type="REST"
-            => entity="/UpstreamOrg/Member/Rollover" ; synchronous API call
+        API name="login" type="REST"
+            => entity="/UpstreamOrg/auth/login" ; synchronous API call
             -> entity="/Org/Event Handlers/PII Handler" ; asynchronous
     service name="Event Handlers"
         event-handler name="PII Handler"
@@ -100,7 +100,7 @@ describe("parse", () => {
     expect(smApi.children[0].children).toHaveLength(2);
     expect(smApi.children[0].children[0]).toEqual({
       kind: "=>",
-      attrs: { entity: "/UpstreamOrg/Member/Rollover" },
+      attrs: { entity: "/UpstreamOrg/auth/login" },
       children: [],
     });
     expect(smApi.children[0].children[1]).toEqual({

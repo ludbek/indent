@@ -24,7 +24,7 @@ Three subpath exports:
 ## Parsing
 
 ```ts
-import { parse, parseFile } from "indent-lang";
+import { parse, parseFile } from "indent-lang/parser";
 
 const { roots } = parse(source);
 // roots: IndentNode[]
@@ -347,21 +347,6 @@ import { resolveSchemaFor } from "indent-lang/schema";
 const schemaPath = resolveSchemaFor(parseResult);
 // string | undefined
 ```
-
----
-
-## CLI
-
-```
-indent-lang <path> [options]
-
-  -o, --output <p>   write JSON output to a file instead of stdout
-  --schema <path>    validate against this schema, overriding discovery
-```
-
-Without `--schema`, the schema is auto-discovered from the document's
-`!schema` directive. Schema diagnostics go to stderr; JSON output is still
-written. The process exits non-zero if any diagnostic has `error` severity.
 
 ---
 

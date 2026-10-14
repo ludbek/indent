@@ -710,7 +710,7 @@ export function computeCompletions(
     // Ref/path completions must be marked incomplete so the client re-queries
     // the server on every keystroke instead of caching this list and doing its
     // own fuzzy filtering -- the latter mis-matches `/`-delimited path segments
-    // (e.g. `//b` fuzzy-matching a `b` deep inside a `/neo/datahub/...` label).
+    // (e.g. `//b` fuzzy-matching a `b` deep inside a `/ateam/database/...` label).
     const refItems = buildRefCompletionItems(
       typedValue,
       position,

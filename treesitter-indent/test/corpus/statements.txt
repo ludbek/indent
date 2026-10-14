@@ -78,7 +78,7 @@ Multi-level nesting and dedent back to a shallower depth
 org name="Acme"
     team name="Phoenix"
     service name="user-service"
-        API name="rollover"
+        API name="login"
 org name="Globex"
 
 ---
@@ -172,8 +172,8 @@ org name="Acme" \
 Bareword kind, e.g. "->" used purely as an ordinary type keyword
 ==================
 
-API name="rollover"
-    -> entity="Globex/super/rollover"
+API name="login"
+    -> entity="Globex/auth/login"
 
 ---
 
@@ -299,7 +299,7 @@ service "Auth Service" \
 Unquoted ref attribute values (absolute, descendant, predicates)
 ==================
 
-API name="rollover"
+API name="login"
     -> entity=/org/service/database
     -> entity=//database
     -> entity=/org//database
