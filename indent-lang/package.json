@@ -1,6 +1,6 @@
 {
   "name": "indent-lang",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Indent Markup Language (.inml): parser, XPath-like node selector, and schema validation for a generic, human-friendly, indentation-based tree markup language (XML-light).",
   "license": "MIT",
   "repository": {
@@ -52,6 +52,6 @@
   },
   "dependencies": {
     "tree-sitter": "^0.25.0",
-    "treesitter-indent": "^0.2.1"
+    "treesitter-indent": "^0.2.2"
   }
 }
