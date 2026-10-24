@@ -1,5 +1,28 @@
 # Changelog
 
+## [1.0.0](https://github.com/ludbek/indent/compare/vscode-indent-lang-v0.2.3...vscode-indent-lang-v1.0.0) (2026-10-24)
+
+
+### ⚠ BREAKING CHANGES
+
+* schemas that reference a top-level element as a child must mark it reusable=true, which also removes it from the document roots.
+
+### Features
+
+* add reusable elements to schemas ([0c9aef9](https://github.com/ludbek/indent/commit/0c9aef90be9ccc18ad8d81cf6ed3f42918bbb230))
+
+
+### Bug Fixes
+
+* quote bracket colorization ([e6d2d78](https://github.com/ludbek/indent/commit/e6d2d78e8574088d2a41fdb09e0130c212a07137))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * indent-language-server bumped from ^0.2.2 to ^1.0.0
+
 ## [0.2.3](https://github.com/ludbek/indent/compare/vscode-indent-lang-v0.2.2...vscode-indent-lang-v0.2.3) (2026-10-14)
 
 
