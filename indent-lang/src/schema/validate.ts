@@ -33,34 +33,44 @@ function pluralCount(n: number): string {
 
 /**
  * Resolves a ref's raw xpath text against the full document tree, returning
- * the `.kind` of every matched node. An invalid/unparsable xpath expression
- * (shouldn't normally occur -- the tokenizer already requires refs to look
- * like a valid leading `/`/`//` path -- but defensively guarded) resolves to
- * no matches, same as a ref that legitimately matches nothing.
+ * every matched node. An invalid/unparsable xpath expression (shouldn't
+ * normally occur -- the tokenizer already requires refs to look like a valid
+ * leading `/`/`//` path -- but defensively guarded) resolves to no matches,
+ * same as a ref that legitimately matches nothing.
  */
-function resolveRefTargetKinds(roots: IndentNode[], raw: string): string[] {
+function resolveRefTargets(roots: IndentNode[], raw: string): IndentNode[] {
   try {
-    const matches = selectNodes(roots as unknown as XPathNode[], raw) as unknown as IndentNode[];
-    return matches.map((m) => m.kind);
+    return selectNodes(roots as unknown as XPathNode[], raw) as unknown as IndentNode[];
   } catch {
     return [];
   }
 }
 
 /**
- * Validates a ref-typed value's target-kind constraint (`AttrSchema`/
- * `ValueSchema.refElement`), resolving the ref against the full document
- * tree and checking every match's kind. Returns an error message describing
- * the violation, or `undefined` if the constraint is satisfied.
+ * Validates a ref-typed value's target constraint (`AttrSchema`/
+ * `ValueSchema.refElement`): the ref is resolved against the full document
+ * tree and every matched node must have been validated against one of the
+ * declared elements (compared by scoped id, so a `service` under `org` is
+ * distinct from a `service` under `team`). `nodeSchemaIds` maps each
+ * document node to the scoped id it was validated against; nodes absent
+ * from it (e.g. unknown elements) never satisfy a constraint. Returns an
+ * error message describing the violation, or `undefined` if satisfied.
  */
-function checkRefTargetKind(roots: IndentNode[], raw: string, refElement: string[]): string | undefined {
-  const targetKinds = resolveRefTargetKinds(roots, raw);
-  if (targetKinds.length === 0) {
+function checkRefTargetKind(
+  roots: IndentNode[],
+  nodeSchemaIds: Map<IndentNode, string>,
+  raw: string,
+  refElement: string[],
+): string | undefined {
+  const targets = resolveRefTargets(roots, raw);
+  if (targets.length === 0) {
     return `ref '${raw}' does not resolve to any node in the document`;
   }
-  const mismatched = targetKinds.filter((k) => !refElement.includes(k));
+  const mismatched = targets
+    .map((t) => ({ kind: t.kind, id: nodeSchemaIds.get(t) }))
+    .filter((t) => t.id === undefined || !refElement.includes(t.id));
   if (mismatched.length > 0) {
-    const uniqueMismatched = [...new Set(mismatched)];
+    const uniqueMismatched = [...new Set(mismatched.map((t) => t.id ?? t.kind))];
     const expected =
       refElement.length > 1
         ? `one of kind '${refElement.join("', '")}'`
@@ -82,6 +92,12 @@ function checkRefTargetKind(roots: IndentNode[], raw: string, refElement: string
  */
 export function validateAgainstSchema(roots: IndentNode[], schema: Schema): SchemaDiagnostic[] {
   const diagnostics: SchemaDiagnostic[] = [];
+
+  // Document node -> scoped id of the schema element it was validated
+  // against. Ref-target constraints are checked after the whole tree has
+  // been walked (see `deferredRefChecks`), so forward refs resolve too.
+  const nodeSchemaIds = new Map<IndentNode, string>();
+  const deferredRefChecks: Array<() => void> = [];
 
   function validateSiblings(nodes: IndentNode[], allowed: Map<string, ChildRef>, scopeLabel: string) {
     // Count occurrences per element among these siblings.
@@ -156,14 +172,18 @@ export function validateAgainstSchema(roots: IndentNode[], schema: Schema): Sche
     }
 
     if (valueSchema.refElement && isRefValue(node.value)) {
-      const violation = checkRefTargetKind(roots, node.value.raw, valueSchema.refElement);
-      if (violation) {
-        diagnostics.push({
-          severity: "error",
-          message: `value on element '${elementName}': ${violation}`,
-          element: elementName,
-        });
-      }
+      const { raw } = node.value;
+      const refElement = valueSchema.refElement;
+      deferredRefChecks.push(() => {
+        const violation = checkRefTargetKind(roots, nodeSchemaIds, raw, refElement);
+        if (violation) {
+          diagnostics.push({
+            severity: "error",
+            message: `value on element '${elementName}': ${violation}`,
+            element: elementName,
+          });
+        }
+      });
     }
   }
 
@@ -176,6 +196,7 @@ export function validateAgainstSchema(roots: IndentNode[], schema: Schema): Sche
       return;
     }
 
+    nodeSchemaIds.set(node, elementName);
     validateValue(node, elementName, elementSchema.value);
 
     // Attrs: unknown, missing required, mistyped, and ref-target-kind
@@ -201,14 +222,18 @@ export function validateAgainstSchema(roots: IndentNode[], schema: Schema): Sche
         continue;
       }
       if (attrSchema.refElement && isRefValue(attrValue)) {
-        const violation = checkRefTargetKind(roots, attrValue.raw, attrSchema.refElement);
-        if (violation) {
-          diagnostics.push({
-            severity: "error",
-            message: `attribute '${attrName}' on element '${elementName}': ${violation}`,
-            element: elementName,
-          });
-        }
+        const { raw } = attrValue;
+        const refElement = attrSchema.refElement;
+        deferredRefChecks.push(() => {
+          const violation = checkRefTargetKind(roots, nodeSchemaIds, raw, refElement);
+          if (violation) {
+            diagnostics.push({
+              severity: "error",
+              message: `attribute '${attrName}' on element '${elementName}': ${violation}`,
+              element: elementName,
+            });
+          }
+        });
       }
     }
     for (const [attrName, attrSchema] of elementSchema.attrs) {
@@ -226,6 +251,7 @@ export function validateAgainstSchema(roots: IndentNode[], schema: Schema): Sche
   }
 
   validateSiblings(roots, schema.roots, "at the document root");
+  for (const check of deferredRefChecks) check();
 
   return diagnostics;
 }

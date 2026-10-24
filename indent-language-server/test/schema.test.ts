@@ -288,7 +288,7 @@ element "team"
     );
     const diags = computeDiagnostics(docUri, index);
     expect(
-      diags.some((d) => /must resolve to an element of kind 'team'/.test(d.message))
+      diags.some((d) => /must resolve to an element of kind 'org\/team'/.test(d.message))
     ).toBe(true);
   });
 
@@ -317,7 +317,7 @@ element "team"
     );
     const diags = computeDiagnostics(docUri, index);
     expect(
-      diags.some((d) => /must resolve to an element of kind 'team'/.test(d.message))
+      diags.some((d) => /must resolve to an element of kind 'org\/team'/.test(d.message))
     ).toBe(true);
   });
 
@@ -369,11 +369,95 @@ element "org"
       (d) => d.source === "indent-schema" && /attribute 'team'.*does not resolve to any node/.test(d.message)
     );
     const schemaApiX = diags.find(
-      (d) => d.source === "indent-schema" && /value on element '->'.*does not resolve to any node/.test(d.message)
+      (d) => d.source === "indent-schema" && /value on element 'org\/service\/API\/->'.*does not resolve to any node/.test(d.message)
     );
     expect(schemaTeam).toBeDefined();
     expect(schemaApiX).toBeDefined();
     expect(schemaTeam?.severity).toBe(DiagnosticSeverity.Error);
     expect(schemaApiX?.severity).toBe(DiagnosticSeverity.Error);
+  });
+
+  describe("scoped element declarations", () => {
+    const SCOPED = `
+element "org"
+    attr "name" type="string" required=true
+    element "service" minCount=1
+        attr "name" type="string" required=true
+    element "group"
+        attr "label" type="string"
+        element "service"
+            attr "tier" type="string" required=true
+            attr "live" type="boolean"
+        element //element[.="org"]/element[.="group"]
+`;
+
+    beforeEach(() => {
+      write("scoped.schema.inml", SCOPED);
+    });
+
+    it("validates the same element name against its own declaration at each level", () => {
+      const docUri = write(
+        "scoped-ok.inml",
+        [
+          `!schema "scoped.schema.inml"`,
+          `org name="acme"`,
+          `    service name="api"`,
+          `    group label="g"`,
+          `        service tier="gold"`,
+          `        group label="inner"`,
+          `            service tier="silver"`,
+          ``,
+        ].join("\n")
+      );
+      const diags = computeDiagnostics(docUri, index).filter((d) => d.source === "indent-schema");
+      expect(diags).toEqual([]);
+    });
+
+    it("flags attrs belonging to a different scope, naming the scoped element", () => {
+      const docUri = write(
+        "scoped-bad.inml",
+        [
+          `!schema "scoped.schema.inml"`,
+          `org name="acme"`,
+          `    service name="api"`,
+          `    group label="g"`,
+          `        service name="wrong"`,
+          ``,
+        ].join("\n")
+      );
+      const messages = computeDiagnostics(docUri, index)
+        .filter((d) => d.source === "indent-schema")
+        .map((d) => d.message);
+      expect(messages.some((m) => /unknown attribute 'name' on element 'org\/group\/service'/.test(m))).toBe(true);
+      expect(messages.some((m) => /missing required attribute 'tier' on element 'org\/group\/service'/.test(m))).toBe(true);
+    });
+
+    it("completes attr names from the scoped declaration, not another same-named element", () => {
+      const source = `!schema "scoped.schema.inml"\norg name="a"\n    group label="g"\n        service `;
+      const docUri = write("scoped-attr-completion.inml", source);
+      const lines = source.split("\n");
+      const last = lines.length - 1;
+      const items = computeCompletions(docUri, { line: last, character: lines[last].length }, index);
+      expect(items.some((i) => i.label === "tier")).toBe(true);
+      // `name` belongs to org/service, not org/group/service.
+      expect(items.some((i) => i.label === "name")).toBe(false);
+    });
+
+    it("completes boolean literals from the scoped declaration", () => {
+      const source = `!schema "scoped.schema.inml"\norg name="a"\n    group label="g"\n        service tier="x" live=\n`;
+      const docUri = write("scoped-bool-completion.inml", source);
+      const lines = source.split("\n");
+      const last = lines.length - 2;
+      const items = computeCompletions(docUri, { line: last, character: lines[last].length }, index);
+      expect(items.some((i) => i.label === "true")).toBe(true);
+    });
+
+    it("suggests children of the scoped parent, including recursive group", () => {
+      const source = `!schema "scoped.schema.inml"\norg name="a"\n    group label="g"\n        \n`;
+      const docUri = write("scoped-kind-completion.inml", source);
+      const items = computeCompletions(docUri, { line: 3, character: 8 }, index);
+      expect(items.some((i) => i.label === "service")).toBe(true);
+      expect(items.some((i) => i.label === "group")).toBe(true);
+    });
   });
 });

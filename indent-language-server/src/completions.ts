@@ -11,6 +11,7 @@ import {
 import { uriToFsPath, type WorkspaceIndex } from "./indexer.js";
 import type { AstDocument, AstValueType, IndexedNode } from "./types.js";
 import type { ChildRef, Schema } from "indent-lang/schema";
+import { findEnclosingStatement, schemaIdForStatement, schemaIdForTypedKind } from "./schemaScope.js";
 
 /**
  * Indent has no reserved/special tag names -- `kind` (the first word of a
@@ -35,24 +36,10 @@ function getSchemaForDocument(index: WorkspaceIndex, uri: string): Schema | unde
 /** Indentation unit used by the indentation diagnostic -- 4 spaces per depth level. */
 const INDENT_UNIT = 4;
 
-/**
- * Finds the kind name of the nearest preceding statement at `parentDepth`
- * (i.e. the enclosing parent of whatever is being typed at `currentDepth`),
- * by scanning statements that start before `position`. Returns `undefined`
- * at the document root (`currentDepth === 0`, no parent to resolve).
- */
-function findEnclosingKind(doc: AstDocument, position: Position, currentDepth: number): string | undefined {
-  if (currentDepth <= 0) return undefined;
-  const parentDepth = currentDepth - 1;
-  let best: { line: number; kind: string } | undefined;
-  for (const stmt of doc.allStatements) {
-    if (stmt.depth !== parentDepth) continue;
-    if (stmt.range.start.line >= position.line) continue;
-    if (!best || stmt.range.start.line > best.line) {
-      best = { line: stmt.range.start.line, kind: stmt.kind };
-    }
-  }
-  return best?.kind;
+/** Depth of a line from its leading whitespace. */
+function lineDepth(line: string): number {
+  const leading = line.length - line.trimStart().length;
+  return Math.round(leading / INDENT_UNIT);
 }
 
 /**
@@ -808,7 +795,10 @@ export function computeCompletions(
     // what's already observed in the workspace (handled by statsMap above).
     if (!isQuoted && currentKind) {
       const schema = getSchemaForDocument(index, uri);
-      const attrSchema = schema?.elements.get(currentKind)?.attrs.get(attrName);
+      const currentId = schema
+        ? schemaIdForTypedKind(schema, doc, position, lineDepth(line), currentKind)
+        : undefined;
+      const attrSchema = currentId !== undefined ? schema?.elements.get(currentId)?.attrs.get(attrName) : undefined;
       if (attrSchema?.type === "boolean") {
         for (const boolLiteral of ["true", "false"]) {
           if (partial && !boolLiteral.startsWith(partial.toLowerCase())) continue;
@@ -871,7 +861,10 @@ export function computeCompletions(
       // declared attrs are suggested, never workspace-wide "used elsewhere"
       // ones (which may not even be valid for this schema-bound document).
       const schema = getSchemaForDocument(index, uri);
-      const elementSchema = schema?.elements.get(kindName);
+      const kindId = schema
+        ? schemaIdForTypedKind(schema, doc, position, lineDepth(line), kindName)
+        : undefined;
+      const elementSchema = kindId !== undefined ? schema?.elements.get(kindId) : undefined;
       const lowerPartial = partial.toLowerCase();
       const suggestedAttrNames = new Set<string>();
 
@@ -932,9 +925,10 @@ export function computeCompletions(
 
     if (schema) {
       const currentDepth = Math.round(leadingWhitespaceLen / INDENT_UNIT);
-      const parentKind = findEnclosingKind(doc, position, currentDepth);
+      const parentStmt = findEnclosingStatement(doc, position, currentDepth);
+      const parentId = parentStmt ? schemaIdForStatement(schema, parentStmt) : undefined;
       const allowedChildren: Map<string, ChildRef> | undefined =
-        currentDepth === 0 ? schema.roots : schema.elements.get(parentKind ?? "")?.children;
+        currentDepth === 0 ? schema.roots : schema.elements.get(parentId ?? "")?.children;
       if (allowedChildren) {
         for (const kindName of allowedChildren.keys()) {
           suggestedKinds.add(kindName);
@@ -944,7 +938,7 @@ export function computeCompletions(
             detail:
               currentDepth === 0
                 ? "Allowed at document root (schema)"
-                : `Allowed under '${parentKind}' (schema)`,
+                : `Allowed under '${parentStmt?.kind}' (schema)`,
             textEdit: { range: replaceRange, newText: kindName },
             insertTextFormat: InsertTextFormat.PlainText,
           });
@@ -990,7 +984,8 @@ export function computeCompletions(
     // declared attrs are suggested, never workspace-wide "used elsewhere"
     // ones (which may not even be valid for this schema-bound document).
     const schema = getSchemaForDocument(index, uri);
-    const elementSchema = schema?.elements.get(stmt.kind);
+    const stmtId = schema ? schemaIdForStatement(schema, stmt) : undefined;
+    const elementSchema = stmtId !== undefined ? schema?.elements.get(stmtId) : undefined;
 
     if (schema) {
       if (elementSchema) {

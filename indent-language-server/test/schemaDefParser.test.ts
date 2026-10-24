@@ -113,7 +113,7 @@ element "workspace"
     expect(() => parse(source)).toThrow(/could not resolve/i);
   });
 
-  it("supports inline nested element definitions, registering them globally", () => {
+  it("supports inline nested element definitions, scoped under their parent", () => {
     const source = `
 element "org"
     attr "name" type="string" required=true
@@ -121,9 +121,9 @@ element "org"
         attr "name" type="string" required=true
 `;
     const schema = parse(source);
-    expect([...schema.elements.keys()].sort()).toEqual(["org", "team"]);
+    expect([...schema.elements.keys()].sort()).toEqual(["org", "org/team"]);
     expect(schema.elements.get("org")!.children.get("team")).toEqual({
-      element: "team",
+      element: "org/team",
       minCount: 0,
       maxCount: Infinity,
     });
@@ -138,14 +138,14 @@ element "org"
         element "member" maxCount=5
 `;
     const schema = parse(source);
-    expect([...schema.elements.keys()].sort()).toEqual(["member", "org", "team"]);
+    expect([...schema.elements.keys()].sort()).toEqual(["org", "org/team", "org/team/member"]);
     expect(schema.elements.get("org")!.children.get("team")).toEqual({
-      element: "team",
+      element: "org/team",
       minCount: 1,
       maxCount: Infinity,
     });
-    expect(schema.elements.get("team")!.children.get("member")).toEqual({
-      element: "member",
+    expect(schema.elements.get("org/team")!.children.get("member")).toEqual({
+      element: "org/team/member",
       minCount: 0,
       maxCount: 5,
     });
@@ -162,29 +162,77 @@ element "other"
 `;
     const schema = parse(source);
     expect(schema.elements.get("other")!.children.get("team")).toEqual({
-      element: "team",
+      element: "org/team",
       minCount: 0,
       maxCount: Infinity,
     });
   });
 
-  it("throws when the same element name is inline-defined twice", () => {
+  it("allows the same element name under different parents, as distinct elements", () => {
     const source = `
 element "org"
     element "team"
+        attr "name" type="string" required=true
     element "other"
         element "team"
+            attr "title" type="string"
 `;
-    expect(() => parse(source)).toThrow(SchemaCstDefinitionError);
-    expect(() => parse(source)).toThrow(/duplicate element definition 'team'/);
+    const schema = parse(source);
+    expect(schema.elements.get("org/team")!.attrs.has("name")).toBe(true);
+    expect(schema.elements.get("org/other/team")!.attrs.has("title")).toBe(true);
+    expect(schema.elements.get("org/other/team")!.attrs.has("name")).toBe(false);
   });
 
-  it("throws when an inline nested definition tries to directly self-nest (must use a ref)", () => {
+  it("allows an inline nested definition to reuse its parent's name", () => {
     const source = `
-element "team"
+element "group"
+    element "group"
+`;
+    const schema = parse(source);
+    expect([...schema.elements.keys()].sort()).toEqual(["group", "group/group"]);
+  });
+
+  it("throws, anchored at the offending line, when a name is inline-defined twice under one parent", () => {
+    const source = `element "org"
+    element "team"
     element "team"
 `;
-    expect(() => parse(source)).toThrow(/duplicate element definition 'team'/);
+    expect(() => parse(source)).toThrow(SchemaCstDefinitionError);
+    expect(() => parse(source)).toThrow(/duplicate child element 'team' on element 'org'/);
+    try {
+      parse(source);
+    } catch (e) {
+      expect((e as SchemaCstDefinitionError).range.start.line).toBe(2);
+    }
+  });
+
+  it("throws when a ref matches several declarations sharing a local name under one parent", () => {
+    const source = `
+element "a"
+    element "team"
+
+element "b"
+    element "team"
+
+element "holder"
+    element //element[.="team"]
+`;
+    expect(() => parse(source)).toThrow(/share the name 'team' on element 'holder'/);
+  });
+
+  it("lets a path-qualified ref narrow a name declared in several places", () => {
+    const source = `
+element "a"
+    element "team"
+
+element "b"
+    element "team"
+
+element "holder"
+    element //element[.="b"]/element[.="team"]
+`;
+    const schema = parse(source);
+    expect(schema.elements.get("holder")!.children.get("team")!.element).toBe("b/team");
   });
 
   it("throws on duplicate top-level element definitions", () => {
@@ -312,7 +360,7 @@ element "org"
         attr "name" type="string" required=true
 `;
     const schema = parse(source);
-    expect(schema.elements.get("org")!.attrs.get("team")!.refElement).toEqual(["team"]);
+    expect(schema.elements.get("org")!.attrs.get("team")!.refElement).toEqual(["org/team"]);
   });
 
   it("throws when a ref-constrained attr type= cannot be resolved", () => {
@@ -378,7 +426,7 @@ element "service"
     ]);
   });
 
-  it("throws when a non-wildcard ref resolves to more than one declared element", () => {
+  it("lets a non-wildcard type= ref match several declared elements -- the xpath is authoritative", () => {
     const source = `
 element "org"
     attr "member" type=//element
@@ -389,7 +437,8 @@ element "team"
 element "service"
     attr "name" type="string" required=true
 `;
-    expect(() => parse(source)).toThrow(/is ambiguous -- it matches 3 declared elements/i);
+    const schema = parse(source);
+    expect(schema.elements.get("org")!.attrs.get("member")!.refElement).toEqual(["org", "team", "service"]);
   });
 
   it("anchors an unparsable xpath ref error (e.g. '/*foo') at the offending type= range, not line 0", () => {

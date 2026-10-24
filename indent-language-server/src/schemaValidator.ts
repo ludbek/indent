@@ -2,6 +2,7 @@ import { Diagnostic, DiagnosticSeverity } from "vscode-languageserver";
 import type { ChildRef, Schema, ValueSchema } from "indent-lang/schema";
 import type { AstDocument, AstStatement, AstValue } from "./types.js";
 import type { WorkspaceIndex } from "./indexer.js";
+import { schemaIdForStatement } from "./schemaScope.js";
 
 /**
  * Line-anchored port of `indent-lang/src/schema/validate.ts`'s
@@ -50,7 +51,7 @@ export function validateDocumentAgainstSchema(
    * Looks up the precomputed resolution for a ref carried by `stmt` -- as
    * an attribute (`attrName` set) or as the statement's own positional
    * value (`attrName` undefined) -- and checks every resolved target's
-   * `kind` against `refElement`. Pushes a diagnostic (at `range`) if the
+   * scoped schema id against `refElement`. Pushes a diagnostic (at `range`) if the
    * ref is unresolved or resolves to the wrong kind anywhere.
    */
   function checkRefTargetKind(
@@ -78,9 +79,14 @@ export function validateDocumentAgainstSchema(
       return;
     }
 
+    // Compare by scoped id, not bare kind: a `service` under `org` is a
+    // different declaration from a `service` under `team`.
     const mismatched = ref.resolvedTargetPaths
-      .map((path) => index.getNodeByPath(path)?.kind)
-      .filter((kind): kind is string => kind !== undefined && !refElement.includes(kind));
+      .map((path) => index.getNodeByPath(path))
+      .filter((node): node is NonNullable<typeof node> => node !== undefined)
+      .map((node) => ({ kind: node.kind, id: schemaIdForStatement(schema, node.statement) }))
+      .filter((t) => t.id === undefined || !refElement.includes(t.id))
+      .map((t) => t.id ?? t.kind);
     if (mismatched.length > 0) {
       const uniqueMismatched = [...new Set(mismatched)];
       const expected =
