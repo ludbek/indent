@@ -10,10 +10,10 @@ element "workspace"
     element //element[.="person"]
     element //element[.="system"] minCount=1
 
-element "person"
+element "person" reusable=true
     attr "name" type="string" required=true
 
-element "system"
+element "system" reusable=true
     attr "name" type="string" required=true
 `;
     const schema = parseSchema(source);
@@ -33,18 +33,15 @@ element "system"
       maxCount: Infinity,
     });
 
-    // Every top-level element is implicitly allowed at the document root
-    // with the default (unbounded) cardinality.
+    // Every unmarked top-level element is implicitly allowed at the document
+    // root with the default (unbounded) cardinality.
     expect(schema.roots.get("workspace")).toEqual({
       element: "workspace",
       minCount: 0,
       maxCount: Infinity,
     });
-    expect(schema.roots.get("person")).toEqual({
-      element: "person",
-      minCount: 0,
-      maxCount: Infinity,
-    });
+    // `person` is reusable, so it is not a document root.
+    expect(schema.roots.has("person")).toBe(false);
   });
 
   it("supports exact min/max cardinality bounds", () => {
@@ -52,7 +49,7 @@ element "system"
 element "container"
     element //element[.="component"] minCount=1 maxCount=3
 
-element "component"
+element "component" reusable=true
     attr "name" type="string" required=true
 `;
     const schema = parseSchema(source);
@@ -79,7 +76,7 @@ element "container"
 
   it("supports edge elements like '->' via quoted ref predicates", () => {
     const source = `
-element "->"
+element "->" reusable=true
     attr "label" type="string" required=true
     attr "to" type="ref" required=true
 
@@ -144,7 +141,7 @@ element "org"
     });
   });
 
-  it("allows a ref elsewhere to cross-reference an inline-nested definition", () => {
+  it("rejects a child ref into another element's subtree, pointing at reusable=true", () => {
     const source = `
 element "org"
     element "team"
@@ -153,12 +150,87 @@ element "org"
 element "other"
     element //element[.="team"]
 `;
+    expect(() => parseSchema(source)).toThrow(/resolves to 'org\/team', which is not reusable -- add 'reusable=true'/);
+  });
+
+  it("allows a child ref to a reusable top-level element, from several parents", () => {
+    const source = `
+element "link" reusable=true
+    attr "href" type="string" required=true
+
+element "html"
+    element "head"
+        element //element[.="link"]
+    element "body"
+        element //element[.="link"]
+        element "div"
+            element //element[.="link"]
+`;
     const schema = parseSchema(source);
-    expect(schema.elements.get("other")!.children.get("team")).toEqual({
-      element: "org/team",
-      minCount: 0,
-      maxCount: Infinity,
-    });
+    for (const parent of ["html/head", "html/body", "html/body/div"]) {
+      expect(schema.elements.get(parent)!.children.get("link")!.element).toBe("link");
+    }
+    expect(schema.elements.get("link")!.reusable).toBe(true);
+    expect(schema.roots.has("link")).toBe(false);
+    expect(schema.roots.has("html")).toBe(true);
+  });
+
+  it("rejects a child ref to an unmarked top-level element", () => {
+    const source = `
+element "service"
+element "org"
+    element //element[.="service"]
+`;
+    expect(() => parseSchema(source)).toThrow(/resolves to 'service', which is not reusable/);
+  });
+
+  it("allows a reusable element to reference itself (recursion)", () => {
+    const source = `
+element "group" reusable=true
+    element //element[.="group"]
+
+element "doc"
+    element //element[.="group"]
+`;
+    const schema = parseSchema(source);
+    expect(schema.elements.get("group")!.children.get("group")!.element).toBe("group");
+  });
+
+  it("allows a nested element to reference itself or an ancestor (recursion)", () => {
+    const source = `
+element "softwareSystem"
+    element "container"
+        element //element[.="container"]
+        element //element[.="softwareSystem"]
+`;
+    const schema = parseSchema(source);
+    expect(schema.elements.get("softwareSystem/container")!.children.get("container")!.element).toBe("softwareSystem/container");
+    expect(schema.elements.get("softwareSystem/container")!.children.get("softwareSystem")!.element).toBe("softwareSystem");
+  });
+
+  it("rejects 'reusable' on a nested element line", () => {
+    const source = `
+element "org"
+    element "team" reusable=true
+`;
+    expect(() => parseSchema(source)).toThrow(/'reusable' is only allowed on a top-level 'element' definition/);
+  });
+
+  it("rejects a non-boolean 'reusable' value", () => {
+    expect(() => parseSchema(`element "a" reusable="yes"\n`)).toThrow(/'reusable=' must be a boolean/);
+  });
+
+  it("rejects an unknown attribute on a top-level element line", () => {
+    expect(() => parseSchema(`element "a" bogus=1\n`)).toThrow(/unexpected attribute 'bogus' on top-level element 'a'/);
+  });
+
+  it("excludes reusable elements from roots, and rejects a schema with no root", () => {
+    const ok = parseSchema(`
+element "a"
+element "b" reusable=true
+`);
+    expect([...ok.roots.keys()]).toEqual(["a"]);
+    expect(() => parseSchema(`element "b" reusable=true\n`)).toThrow(/declares no document root/);
   });
 
   it("allows the same element name to be declared under different parents, as distinct elements", () => {
@@ -198,46 +270,47 @@ element "org"
     expect(() => parseSchema(source)).toThrow(/duplicate child element 'team' on element 'org'/);
   });
 
-  it("throws when a ref and an inline definition give one parent two children of the same name", () => {
+  it("throws when a reusable ref and an inline definition give one parent two children of the same name", () => {
     const source = `
-element "team"
+element "team" reusable=true
 
 element "org"
     element "team"
-    element //element[.="team"]
+    element /element[.="team"]
 `;
     expect(() => parseSchema(source)).toThrow(/share the name 'team' on element 'org'/);
   });
 
-  it("throws when a ref matches several declarations sharing a local name under one parent", () => {
+  it("throws on a duplicate child ref to the same reusable element", () => {
     const source = `
-element "a"
-    element "team"
+element "team" reusable=true
 
-element "b"
-    element "team"
-
-element "holder"
+element "org"
+    element //element[.="team"]
     element //element[.="team"]
 `;
-    expect(() => parseSchema(source)).toThrow(/share the name 'team' on element 'holder'/);
+    expect(() => parseSchema(source)).toThrow(/duplicate child element reference to 'team' on element 'org'/);
   });
 
-  it("lets a path-qualified ref narrow a name declared in several places", () => {
+  it("lets a top-level-qualified ref narrow a name that is also declared nested", () => {
     const source = `
-element "a"
-    element "team"
-        attr "x" type="string"
+element "team" reusable=true
+    attr "x" type="string"
 
-element "b"
-    element "team"
-        attr "y" type="string"
+element "org"
+    element "other"
+        element "team"
+            attr "y" type="string"
 
 element "holder"
-    element //element[.="b"]/element[.="team"]
+    element /element[.="team"]
 `;
     const schema = parseSchema(source);
-    expect(schema.elements.get("holder")!.children.get("team")!.element).toBe("b/team");
+    expect(schema.elements.get("holder")!.children.get("team")!.element).toBe("team");
+    // The unqualified ref also matches the nested declaration, which is not shareable.
+    expect(() => parseSchema(source.replace('/element[.="team"]', '//element[.="team"]'))).toThrow(
+      /resolves to 'org\/other\/team', which is not reusable/,
+    );
   });
 
   it("throws when an inline nested definition tries to directly self-nest with a duplicate sibling", () => {
@@ -270,7 +343,7 @@ element "person"
 element "workspace"
     element //element[.="person"] minCount=5 maxCount=2
 
-element "person"
+element "person" reusable=true
 `;
     expect(() => parseSchema(source)).toThrow(SchemaDefinitionError);
   });
@@ -280,7 +353,7 @@ element "person"
 element "workspace"
     element //element[.="person"] minCount=-1
 
-element "person"
+element "person" reusable=true
 `;
     expect(() => parseSchema(negative)).toThrow(SchemaDefinitionError);
 
@@ -288,7 +361,7 @@ element "person"
 element "workspace"
     element //element[.="person"] maxCount=0
 
-element "person"
+element "person" reusable=true
 `;
     expect(() => parseSchema(zeroMax)).toThrow(SchemaDefinitionError);
   });

@@ -24,6 +24,7 @@ const normalize = (schema: Schema) => ({
     .map(([name, el]) => ({
       name,
       id: el.id,
+      reusable: el.reusable,
       localName: el.name,
       attrs: [...el.attrs.entries()].sort(([a], [b]) => a.localeCompare(b)),
       children: [...el.children.entries()]
@@ -60,17 +61,41 @@ element "group"
         attr "label" type="string"
 `,
   qualifiedRefNarrows: `
-element "a"
-    element "team"
-        attr "x" type="string"
+element "team" reusable=true
+    attr "x" type="string"
 
-element "b"
+element "a"
     element "team"
         attr "y" type="string"
 
 element "holder"
-    element //element[.="b"]/element[.="team"]
+    element /element[.="team"]
     attr "t" type=//element[.="a"]/element[.="team"]
+`,
+  reusableShared: `
+element "link" reusable=true
+    attr "href" type="string" required=true
+
+element "html"
+    element "head"
+        element //element[.="link"]
+    element "body"
+        element //element[.="link"]
+        element "div"
+            element //element[.="link"]
+`,
+  reusableRecursive: `
+element "group" reusable=true
+    element //element[.="group"]
+
+element "doc"
+    element //element[.="group"]
+`,
+  nestedSelfAndAncestorRef: `
+element "softwareSystem"
+    element "container"
+        element //element[.="container"]
+        element //element[.="softwareSystem"]
 `,
   broadTypeRefMatchesMany: `
 element "a"
@@ -88,10 +113,10 @@ element "workspace"
     element //element[.="person"]
     element //element[.="system"] minCount=1
 
-element "person"
+element "person" reusable=true
     attr "name" type="string" required=true
 
-element "system"
+element "system" reusable=true
     attr "name" type="string" required=true
 `,
   inlineNesting: `
@@ -122,23 +147,39 @@ const MALFORMED_FIXTURES: Record<string, string> = {
 element "person"
 element "person"
 `,
+  refToUnmarkedTopLevel: `
+element "service"
+element "org"
+    element //element[.="service"]
+`,
+  refIntoOtherSubtree: `
+element "org"
+    element "team"
+
+element "other"
+    element //element[.="team"]
+`,
+  reusableOnNestedLine: `
+element "org"
+    element "team" reusable=true
+`,
+  reusableNotBoolean: `
+element "a" reusable="yes"
+`,
+  unknownTopLevelAttr: `
+element "a" bogus=1
+`,
+  onlyReusableElements: `
+element "a" reusable=true
+`,
   duplicateInlineDef: `
 element "org"
     element "team"
     element "team"
 `,
-  refCollidesOnLocalName: `
-element "a"
-    element "team"
 
-element "b"
-    element "team"
-
-element "holder"
-    element //element[.="team"]
-`,
   refAndInlineShareName: `
-element "team"
+element "team" reusable=true
 
 element "org"
     element "team"
@@ -156,7 +197,7 @@ element "person"
 element "workspace"
     element //element[.="person"] minCount=5 maxCount=2
 
-element "person"
+element "person" reusable=true
 `,
   unexpectedChildKind: `
 element "person"

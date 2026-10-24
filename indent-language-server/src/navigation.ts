@@ -181,6 +181,9 @@ export function getHover(
         lines.push(`**Attributes:**\n${attrList}`);
       }
 
+      if (elementSchema?.reusable) {
+        lines.push(`_Reusable element (shared shape, referenced from other elements)._`);
+      }
       if (elementSchema) {
         const schemaAttrLines = Array.from(elementSchema.attrs.entries())
           .filter(([name]) => !(name in node.attrs))
