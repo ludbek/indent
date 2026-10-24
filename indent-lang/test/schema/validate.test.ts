@@ -9,14 +9,14 @@ element "workspace"
     element //element[.="person"]
     element //element[.="softwareSystem"]
 
-element "person"
+element "person" reusable=true
     attr "name" type="string" required=true
 
-element "softwareSystem"
+element "softwareSystem" reusable=true
     attr "name" type="string" required=true
     element //element[.="container"]
 
-element "container"
+element "container" reusable=true
     attr "name" type="string" required=true
     element //element[.="container"]
 `);
@@ -70,7 +70,7 @@ element "service"
 element "workspace"
     element //element[.="person"] minCount=1
 
-element "person"
+element "person" reusable=true
 `);
     const doc = parse(`workspace\n`);
     const diagnostics = validateAgainstSchema(doc.roots, schema);
@@ -82,7 +82,7 @@ element "person"
 element "workspace"
     element //element[.="person"] maxCount=1
 
-element "person"
+element "person" reusable=true
 `);
     const doc = parse(`
 workspace
@@ -98,7 +98,7 @@ workspace
 element "container"
     element //element[.="component"] minCount=1 maxCount=2
 
-element "component"
+element "component" reusable=true
 `);
     const ok = parse(`
 container
@@ -131,7 +131,7 @@ workspace name="Acme"
 element "ul"
     element //element[.="li"]
 
-element "li"
+element "li" reusable=true
 `);
     expect(validateAgainstSchema(parse(`ul\n`).roots, schema)).toEqual([]);
     expect(
@@ -153,10 +153,10 @@ element "diagram"
     element //element[.="actor"]
     element //element[.="->"]
 
-element "actor"
+element "actor" reusable=true
     attr "name" type="string" required=true
 
-element "->"
+element "->" reusable=true
     attr "label" type="string" required=true
 `);
     const doc = parse(`

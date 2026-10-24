@@ -113,6 +113,11 @@ function parseCardinality(
 
   const allowedKeys = new Set(["minCount", "maxCount"]);
   for (const key of Object.keys(node.attrs)) {
+    if (key === "reusable") {
+      throw new SchemaDefinitionError(
+        `'reusable' is only allowed on a top-level 'element' definition`,
+      );
+    }
     if (!allowedKeys.has(key)) {
       throw new SchemaDefinitionError(
         `unexpected attribute '${key}' on a child 'element' reference -- only 'minCount'/'maxCount' are allowed`,
@@ -250,12 +255,15 @@ function parseValueDef(
  *     depth.
  *   - A **reference**: `element //element[.="name"]`, resolved via
  *     `indent-lang`'s xpath module's self-axis predicate against the
- *     schema's own tree. This points at an element definition declared
- *     elsewhere (top-level or nested) without redefining it -- required
- *     for self-referential elements (e.g. `container` nested in
- *     `container`, which can't be expressed inline since the name wouldn't
- *     exist yet) and for sharing one element under multiple parents with
- *     different cardinality.
+ *     schema's own tree. It may target only a top-level element marked
+ *     `reusable=true` (a shared shape, never a document root), or the
+ *     referring element itself / one of its ancestors (recursion, e.g.
+ *     `container` nested in `container`, which can't be expressed inline
+ *     since the name wouldn't exist yet). This is what lets one shape be
+ *     shared under multiple parents with different cardinality.
+ *
+ * A top-level `element` line may carry `reusable=true`; reusable elements
+ * are excluded from the document roots.
  *
  * Element declarations are scoped: the same name may be declared under
  * different parents (each is a distinct element with its own attrs and
@@ -286,7 +294,7 @@ export function parseSchema(source: string): Schema {
           : `duplicate child element '${name}' on element '${parentId}'`,
       );
     }
-    elements.set(id, { name, id, attrs: new Map(), children: new Map() });
+    elements.set(id, { name, id, reusable: false, attrs: new Map(), children: new Map() });
     defNodes.set(id, node);
     nodeIds.set(node, id);
 
@@ -316,6 +324,22 @@ export function parseSchema(source: string): Schema {
     }
     registerDef(node, node.value, undefined);
     topLevelNames.push(node.value);
+
+    for (const key of Object.keys(node.attrs)) {
+      if (key !== "reusable") {
+        throw new SchemaDefinitionError(
+          `unexpected attribute '${key}' on top-level element '${node.value}' -- only 'reusable' is allowed`,
+        );
+      }
+    }
+    if ("reusable" in node.attrs) {
+      if (typeof node.attrs.reusable !== "boolean") {
+        throw new SchemaDefinitionError(
+          `element '${node.value}' 'reusable=' must be a boolean (true/false)`,
+        );
+      }
+      elements.get(node.value)!.reusable = node.attrs.reusable;
+    }
   }
 
   // Pass 2: fill in attrs/value/children for every definition, now that
@@ -360,6 +384,27 @@ export function parseSchema(source: string): Schema {
 
         const { minCount, maxCount } = parseCardinality(child);
 
+        // A child *reference* may only point at a shared (`reusable=true`)
+        // top-level element, or at the referring element itself / one of its
+        // ancestors (recursion). Anything else would make the target's
+        // scoped id misstate where it sits in the tree. This restriction is
+        // deliberately NOT applied to `attr`/`value` `type=` refs: those
+        // only constrain where a document ref may point, so targeting a
+        // nested element there is legitimate.
+        if (typeof child.value !== "string") {
+          const raw = (child.value as RefValue).raw;
+          for (const resolvedId of resolvedIds) {
+            const target = elements.get(resolvedId)!;
+            const isShared = target.reusable && !resolvedId.includes("/");
+            const isSelfOrAncestor = id === resolvedId || id.startsWith(`${resolvedId}/`);
+            if (!isShared && !isSelfOrAncestor) {
+              throw new SchemaDefinitionError(
+                `child element reference '${raw}' resolves to '${resolvedId}', which is not reusable -- add 'reusable=true' to its top-level definition, or reference an ancestor for recursion`,
+              );
+            }
+          }
+        }
+
         // The xpath is authoritative: every matched declaration becomes a
         // child at this cardinality. Children are keyed by local name, so
         // two matches (or a match and an existing sibling) sharing a local
@@ -385,13 +430,18 @@ export function parseSchema(source: string): Schema {
     }
   }
 
-  // Every top-level element definition is implicitly allowed at the
-  // document root, with the default (unbounded) cardinality. Inline-nested
-  // definitions are NOT implicitly allowed at the root -- only explicitly
-  // declared top-level ones are.
+  // Every top-level element definition that is not `reusable` is implicitly
+  // allowed at the document root, with the default (unbounded) cardinality.
+  // Inline-nested and reusable definitions are NOT allowed at the root.
   const roots = new Map<string, ChildRef>();
   for (const name of topLevelNames) {
+    if (elements.get(name)!.reusable) continue;
     roots.set(name, { element: name, minCount: 0, maxCount: Infinity });
+  }
+  if (topLevelNames.length > 0 && roots.size === 0) {
+    throw new SchemaDefinitionError(
+      `schema declares no document root -- every top-level element is 'reusable=true'`,
+    );
   }
 
   return { elements, roots };

@@ -80,6 +80,12 @@ export interface ElementSchema {
    * one child declaration per name.
    */
   children: Map<string, ChildRef>;
+  /**
+   * True for a top-level `element "name" reusable=true` definition: a shared
+   * shape that exists only to be referenced as a child of other elements. It
+   * is never a document root. Always `false` for nested definitions.
+   */
+  reusable: boolean;
   /** Declared schema for this element's own positional value, if any. */
   value?: ValueSchema;
 }

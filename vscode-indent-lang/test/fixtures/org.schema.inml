@@ -2,6 +2,6 @@ element "org"
     attr "name" type="string" required=true
     element //element[.="service"] minCount=1
 
-element "service"
+element "service" reusable=true
     attr "name" type="string" required=true
     attr "enabled" type="boolean"

@@ -20,7 +20,7 @@ element "org"
     attr "name" type="string" required=true
     element //element[.="service"] minCount=1
 
-element "service"
+element "service" reusable=true
     attr "name" type="string" required=true
     attr "enabled" type="boolean"
 `;
@@ -71,7 +71,7 @@ describe("Schema support", () => {
         `    attr "name" type="string" required=true`,
         `    element //element[.="service"] minCount=1`,
         ``,
-        `element "service"`,
+        `element "service" reusable=true`,
         `    attr "name" type="string" required=true`,
         `    attr "team" name="team" type=//element[.="team"]`,
         ``,
@@ -458,6 +458,66 @@ element "org"
       const items = computeCompletions(docUri, { line: 3, character: 8 }, index);
       expect(items.some((i) => i.label === "service")).toBe(true);
       expect(items.some((i) => i.label === "group")).toBe(true);
+    });
+  });
+
+  describe("reusable elements", () => {
+    const HTML = `
+element "link" reusable=true
+    attr "href" type="string" required=true
+
+element "html"
+    element "head"
+        element //element[.="link"]
+    element "body"
+        element //element[.="link"]
+`;
+
+    beforeEach(() => {
+      write("html.schema.inml", HTML);
+    });
+
+    it("validates a reusable element identically under different parents", () => {
+      const docUri = write(
+        "html-ok.inml",
+        [`!schema "html.schema.inml"`, `html`, `    head`, `        link href="a"`, `    body`, `        link href="b"`, ``].join("\n")
+      );
+      expect(computeDiagnostics(docUri, index).filter((d) => d.source === "indent-schema")).toEqual([]);
+    });
+
+    it("reports violations against the shared shape's id", () => {
+      const docUri = write(
+        "html-bad.inml",
+        [`!schema "html.schema.inml"`, `html`, `    body`, `        link`, ``].join("\n")
+      );
+      const messages = computeDiagnostics(docUri, index).map((d) => d.message);
+      expect(messages.some((m) => /missing required attribute 'href' on element 'link'/.test(m))).toBe(true);
+    });
+
+    it("rejects a reusable element used as a document root", () => {
+      const docUri = write(
+        "html-root.inml",
+        [`!schema "html.schema.inml"`, `link href="a"`, ``].join("\n")
+      );
+      const messages = computeDiagnostics(docUri, index).map((d) => d.message);
+      expect(messages.some((m) => /unknown element 'link' is not allowed at the document root/.test(m))).toBe(true);
+    });
+
+    it("does not suggest a reusable element at the document root", () => {
+      const docUri = write("html-complete.inml", `!schema "html.schema.inml"\n\n`);
+      const items = computeCompletions(docUri, { line: 1, character: 0 }, index);
+      expect(items.some((i) => i.label === "html")).toBe(true);
+      expect(items.some((i) => i.label === "link")).toBe(false);
+    });
+
+    it("anchors an illegal child ref at the ref, with the reusable=true hint", () => {
+      const badUri = write(
+        "ref-bad.schema.inml",
+        [`element "service"`, `element "org"`, `    element //element[.="service"]`, ``].join("\n")
+      );
+      const entry = index.schemaFiles.get(badUri);
+      expect(entry?.parseError).toMatch(/not reusable -- add 'reusable=true'/);
+      expect(entry?.parseErrorRange?.start.line).toBe(2);
     });
   });
 });

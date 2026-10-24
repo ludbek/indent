@@ -170,6 +170,12 @@ function parseCardinality(stmt: AstStatement): { minCount: number; maxCount: num
 
   const allowedKeys = new Set(["minCount", "maxCount"]);
   for (const [key, attr] of Object.entries(stmt.attrs)) {
+    if (key === "reusable") {
+      throw new SchemaCstDefinitionError(
+        `'reusable' is only allowed on a top-level 'element' definition`,
+        attr.nameRange,
+      );
+    }
     if (!allowedKeys.has(key)) {
       throw new SchemaCstDefinitionError(
         `unexpected attribute '${key}' on a child 'element' reference -- only 'minCount'/'maxCount' are allowed`,
@@ -313,7 +319,7 @@ export function parseSchemaFromCst(schemaRoots: AstStatement[]): Schema {
         stmt.kindRange,
       );
     }
-    elements.set(id, { name, id, attrs: new Map(), children: new Map() });
+    elements.set(id, { name, id, reusable: false, attrs: new Map(), children: new Map() });
     defStmts.set(id, stmt);
     stmtIds.set(stmt, id);
 
@@ -339,6 +345,25 @@ export function parseSchemaFromCst(schemaRoots: AstStatement[]): Schema {
     }
     registerDef(stmt, stmt.value.value as string, undefined);
     topLevelNames.push(stmt.value.value as string);
+
+    for (const [key, attr] of Object.entries(stmt.attrs)) {
+      if (key !== "reusable") {
+        throw new SchemaCstDefinitionError(
+          `unexpected attribute '${key}' on top-level element '${stmt.value.value}' -- only 'reusable' is allowed`,
+          attr.nameRange,
+        );
+      }
+    }
+    const reusableAttr = stmt.attrs.reusable;
+    if (reusableAttr) {
+      if (reusableAttr.valueType !== "boolean") {
+        throw new SchemaCstDefinitionError(
+          `element '${stmt.value.value}' 'reusable=' must be a boolean (true/false)`,
+          reusableAttr.valueRange,
+        );
+      }
+      elements.get(stmt.value.value as string)!.reusable = reusableAttr.value as boolean;
+    }
   }
 
   const xpathIds = new Map<XPathNode, string>();
@@ -395,6 +420,25 @@ export function parseSchemaFromCst(schemaRoots: AstStatement[]): Schema {
 
         const { minCount, maxCount } = parseCardinality(child);
 
+        // A child *reference* may only point at a shared (`reusable=true`)
+        // top-level element, or at the referring element itself / one of its
+        // ancestors (recursion). Deliberately NOT applied to `attr`/`value`
+        // `type=` refs: those only constrain where a document ref may
+        // point, so targeting a nested element there is legitimate.
+        if (child.value?.valueType === "ref") {
+          for (const resolvedId of resolvedIds) {
+            const target = elements.get(resolvedId)!;
+            const isShared = target.reusable && !resolvedId.includes("/");
+            const isSelfOrAncestor = id === resolvedId || id.startsWith(`${resolvedId}/`);
+            if (!isShared && !isSelfOrAncestor) {
+              throw new SchemaCstDefinitionError(
+                `child element reference '${child.value.valueRaw}' resolves to '${resolvedId}', which is not reusable -- add 'reusable=true' to its top-level definition, or reference an ancestor for recursion`,
+                child.value.range,
+              );
+            }
+          }
+        }
+
         for (const resolvedId of resolvedIds) {
           const localName = elements.get(resolvedId)!.name;
           const existing = elementSchema.children.get(localName);
@@ -420,7 +464,14 @@ export function parseSchemaFromCst(schemaRoots: AstStatement[]): Schema {
 
   const roots = new Map<string, ChildRef>();
   for (const name of topLevelNames) {
+    if (elements.get(name)!.reusable) continue;
     roots.set(name, { element: name, minCount: 0, maxCount: Infinity });
+  }
+  if (topLevelNames.length > 0 && roots.size === 0) {
+    throw new SchemaCstDefinitionError(
+      `schema declares no document root -- every top-level element is 'reusable=true'`,
+      schemaRoots[0].kindRange,
+    );
   }
 
   return { elements, roots };

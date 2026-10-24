@@ -185,10 +185,10 @@ element "workspace"
     element //element[.="person"]
     element //element[.="softwareSystem"] minCount=1
 
-element "person"
+element "person" reusable=true
     attr "name" type="string" required=true
 
-element "softwareSystem"
+element "softwareSystem" reusable=true
     attr "name" type="string" required=true
     element "container"
         attr "name" type="string" required=true
@@ -197,7 +197,9 @@ element "softwareSystem"
 ```
 
 - Top-level `element "name"` lines are **canonical definitions**. The name
-  is a quoted string. Duplicate top-level names are an error.
+  is a quoted string. Duplicate top-level names are an error. An unmarked
+  top-level element is a **document root**; one marked `reusable=true` is a
+  shared shape (see [Reusable elements](#reusable-elements)).
 - A nested `element "name"` line with a plain quoted string is an **inline
   definition**: it declares a brand-new element, **scoped to its parent**
   (see [Scoped declarations](#scoped-declarations)), *and* wires it up as an
@@ -214,9 +216,44 @@ element "softwareSystem"
   expressed inline, since the name wouldn't exist yet at that point).
   References point at an existing definition and carry only the local
   cardinality. The xpath is authoritative: every declaration it matches is
-  wired in, so qualify the path to narrow it.
+  wired in, so qualify the path to narrow it. A child reference may only
+  target a `reusable=true` top-level element, or the referring element
+  itself or one of its ancestors (recursion).
 - Edge-style elements work the same way:
   `element "->"` is referenced elsewhere as `element //element[.="->"]`.
+
+#### Reusable elements
+
+Mark a top-level element `reusable=true` to share its shape across the tree.
+Think of it as a component: it carries attrs, a value and children, but it
+is not part of the document structure until another element references it.
+
+```
+element "link" reusable=true
+    attr "href" type="string" required=true
+    attr "rel" type="string"
+
+element "html"
+    element "head"
+        element //element[.="link"]
+    element "body"
+        element //element[.="link"]
+        element "div"
+            element //element[.="link"]
+```
+
+- `reusable=true` is allowed only on a top-level `element` line.
+- A reusable element is **never a document root**: a document containing
+  only `link` is invalid against the schema above.
+- Child references may target only reusable elements (or recursion onto
+  oneself / an ancestor). Referencing an unmarked or nested element is a
+  schema error that names the element and the fix.
+- Every use validates against the same declaration, whatever its parent;
+  diagnostics refer to it by its bare id (`link`).
+- A schema must declare at least one non-reusable top-level element.
+- `attr`/`value` `type=` refs are **not** restricted: they only constrain
+  where a document ref may point, so they may target any element, including
+  nested ones.
 
 #### Scoped declarations
 
@@ -244,7 +281,8 @@ top-level ids are just the name. Element names cannot contain `/`.
   an already-present name, is an error.
 - A ref such as `//element[.="service"]` matches **every** declaration it
   selects. Use a qualified path (`//element[.="org"]/element[.="service"]`)
-  to select one. A ref matching nothing is an error.
+  to select one, or `/element[.="x"]` to select only the top-level one. A
+  ref matching nothing is an error.
 - Ref-constrained `type=` is checked by element id: a document ref must
   resolve to a node validated against one of the declarations the `type=`
   xpath matched.
@@ -310,8 +348,9 @@ collection-heavy, so requiring an explicit `maxCount` everywhere would be
 noise. Constraints: both must be integers, `minCount >= 0`,
 `maxCount >= 1`, `minCount <= maxCount`.
 
-Every top-level `element` definition is implicitly allowed at the document
-root with the default cardinality. Inline-nested definitions are not.
+Every top-level `element` definition that is not `reusable=true` is
+implicitly allowed at the document root with the default cardinality.
+Inline-nested and reusable definitions are not.
 
 ### Validating
 
