@@ -197,12 +197,12 @@ element "softwareSystem"
 ```
 
 - Top-level `element "name"` lines are **canonical definitions**. The name
-  is a quoted string. Duplicates are an error.
+  is a quoted string. Duplicate top-level names are an error.
 - A nested `element "name"` line with a plain quoted string is an **inline
-  definition**: it declares a brand-new element -- registered globally,
-  exactly as if written at the top level -- *and* wires it up as an allowed
-  child of the enclosing element at the cardinality declared on that line.
-  Inline definitions may nest further inline definitions, to any depth.
+  definition**: it declares a brand-new element, **scoped to its parent**
+  (see [Scoped declarations](#scoped-declarations)), *and* wires it up as an
+  allowed child of the enclosing element at the cardinality declared on that
+  line. Inline definitions may nest further inline definitions, to any depth.
 - A nested `element //element[.="name"]` line is a **reference**, not a
   redefinition: the value is an xpath ref resolved against the schema's own
   root nodes, pointing at an element defined elsewhere (top-level or
@@ -212,11 +212,45 @@ element "softwareSystem"
   appear under many parents with different cardinality, and can be
   self-referential (`container` inside `container` -- which can't be
   expressed inline, since the name wouldn't exist yet at that point).
-  References point at one canonical definition and carry only the local
-  cardinality, so there is exactly one place that defines an element's
-  shape; every other mention of that name must use the ref form.
+  References point at an existing definition and carry only the local
+  cardinality. The xpath is authoritative: every declaration it matches is
+  wired in, so qualify the path to narrow it.
 - Edge-style elements work the same way:
   `element "->"` is referenced elsewhere as `element //element[.="->"]`.
+
+#### Scoped declarations
+
+Element names are unique **per parent**, not globally. The same name may be
+declared under different parents, and each declaration is a distinct element
+with its own attributes, value and children. This lets a layout element such
+as `group` appear anywhere in a tree, recursively:
+
+```
+element "org"
+    element "service" minCount=1
+        attr "name" type="string" required=true
+    element "group"
+        element "service"
+            attr "tier" type="string"
+        element //element[.="org"]/element[.="group"]
+```
+
+Here `org/service`, `org/group/service` are different elements. An element's
+**id** is its `/`-joined path of declaration names (`org/group/service`);
+top-level ids are just the name. Element names cannot contain `/`.
+
+- A parent may hold at most one child per name. Two inline definitions with
+  the same name under one parent, or a ref that brings in a second child with
+  an already-present name, is an error.
+- A ref such as `//element[.="service"]` matches **every** declaration it
+  selects. Use a qualified path (`//element[.="org"]/element[.="service"]`)
+  to select one. A ref matching nothing is an error.
+- Ref-constrained `type=` is checked by element id: a document ref must
+  resolve to a node validated against one of the declarations the `type=`
+  xpath matched.
+- Cardinality is counted among the direct children of one parent; a node
+  nested in a `group` does not count towards the enclosing parent's
+  `minCount`.
 
 #### Attributes
 

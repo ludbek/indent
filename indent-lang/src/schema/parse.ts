@@ -26,60 +26,52 @@ function isRefValue(value: unknown): value is RefValue {
 }
 
 /**
- * Resolves an xpath self-axis ref (e.g. `//element[.="team"]`) against the
- * schema's own root nodes to the declared element name(s) it points at, as
- * a node-set-style array -- matching standard xpath semantics, where a
- * query always yields a collection regardless of cardinality (0, 1, or
- * many). Shared by child-element references, and by `attr`/`value` `type=`
+ * Resolves an xpath ref (e.g. `//element[.="team"]`) against the schema's
+ * own tree to the scoped id(s) of the declared element(s) it matches, as a
+ * node-set-style array -- matching standard xpath semantics, where a query
+ * always yields a collection regardless of cardinality (0, 1, or many).
+ * Shared by child-element references and `attr`/`value` `type=`
  * ref-constraints.
  *
- * Matching more than one declared element is only permitted when the raw
- * xpath contains a wildcard (`*`) step *and* the caller opts in via
- * `allowMultiple` (set for `type=` ref-constraints, which can model a set
- * of allowed target kinds; not set for child-element references, which
- * only ever name a single element to nest). Otherwise >1 match is treated
- * as a likely authoring mistake and rejected as ambiguous.
+ * The xpath is authoritative: every declaration it matches is returned, and
+ * it's up to the schema designer to qualify the path (e.g.
+ * `//element[.="org"]/element[.="service"]`) when a narrower match is
+ * wanted. Only a ref matching nothing is an error.
+ *
+ * `nodeIds` maps each definition node (top-level or inline-nested) to its
+ * scoped id.
  */
 function resolveElementRef(
   schemaRoots: IndentNode[],
+  nodeIds: Map<IndentNode, string>,
   raw: string,
   describeWhat: string,
-  options?: { allowMultiple?: boolean },
 ): string[] {
-  const allowMultiple = options?.allowMultiple ?? false;
-
   let parsed;
   try {
     parsed = parseXPath(raw);
   } catch {
-    // An unparsable xpath (e.g. a typo'd `type=//*`) is reported the same
-    // way as a syntactically valid ref that resolves to nothing -- this
-    // package has no line/position info to anchor a more specific error
-    // to (see `SchemaDefinitionError`'s comment), so the message is all
-    // that distinguishes it; the CST-based mirror in the language server's
+    // An unparsable xpath is reported the same way as a syntactically valid
+    // ref that resolves to nothing -- this package has no line/position
+    // info to anchor a more specific error to (see `SchemaDefinitionError`'s
+    // comment); the CST-based mirror in the language server's
     // `schemaDefParser.ts` anchors this same failure to a precise range.
     throw new SchemaDefinitionError(`could not resolve ${describeWhat} '${raw}' to a declared element`);
   }
-  const isWildcard = parsed.steps.some((step) => step.name === "*");
 
   // `selectNodes` is generic over `XPathNode`, whose `value` type doesn't
   // include `RefValue` (xpath stays decoupled from Indent's concrete value
-  // typing). Schema files only ever self-match against string-valued
-  // `element "name"` definitions, so this cast is safe here.
+  // typing). It returns the original node objects, so they can be looked up
+  // in `nodeIds` by identity.
   const matches = selectNodes(schemaRoots as unknown as XPathNode[], parsed) as unknown as IndentNode[];
-  const defMatches = matches.filter((m) => m.kind === "element" && typeof m.value === "string");
-  const names = [...new Set(defMatches.map((m) => m.value as string))];
+  const ids = [
+    ...new Set(matches.map((m) => nodeIds.get(m)).filter((id): id is string => id !== undefined)),
+  ];
 
-  if (names.length === 0) {
+  if (ids.length === 0) {
     throw new SchemaDefinitionError(`could not resolve ${describeWhat} '${raw}' to a declared element`);
   }
-  if (names.length > 1 && !(allowMultiple && isWildcard)) {
-    throw new SchemaDefinitionError(
-      `${describeWhat} '${raw}' is ambiguous -- it matches ${names.length} declared elements`,
-    );
-  }
-
-  return names;
+  return ids;
 }
 
 /**
@@ -136,11 +128,13 @@ function parseCardinality(
  * either one of the plain `AttrType` string literals, or an xpath self-axis
  * ref (e.g. `type=//element[.="team"]`) constraining a `"ref"`-typed
  * attribute/value to resolve (in the document being validated) to a node
- * of one of the declared element(s) the ref matches here (a set, when the
- * ref's a wildcard matching several; a singleton array otherwise).
+ * of one of the declared element(s) the ref matches here (a set when the
+ * ref matches several declarations; a singleton array otherwise), by
+ * scoped id.
  */
 function parseTypeDef(
   schemaRoots: IndentNode[],
+  nodeIds: Map<IndentNode, string>,
   rawType: unknown,
   describeWhat: string,
 ): { type: AttrType; refElement?: string[] } {
@@ -148,9 +142,7 @@ function parseTypeDef(
     return { type: rawType as AttrType };
   }
   if (isRefValue(rawType)) {
-    const refElement = resolveElementRef(schemaRoots, rawType.raw, `${describeWhat} type ref`, {
-      allowMultiple: true,
-    });
+    const refElement = resolveElementRef(schemaRoots, nodeIds, rawType.raw, `${describeWhat} type ref`);
     return { type: "ref", refElement };
   }
   throw new SchemaDefinitionError(
@@ -158,14 +150,18 @@ function parseTypeDef(
   );
 }
 
-function parseAttrDef(schemaRoots: IndentNode[], node: IndentNode): AttrSchema {
+function parseAttrDef(
+  schemaRoots: IndentNode[],
+  nodeIds: Map<IndentNode, string>,
+  node: IndentNode,
+): AttrSchema {
   if (typeof node.value !== "string") {
     throw new SchemaDefinitionError(
       `'attr' requires a quoted string name, e.g. 'attr "name" type="string"'`,
     );
   }
 
-  const { type, refElement } = parseTypeDef(schemaRoots, node.attrs.type, `attr '${node.value}'`);
+  const { type, refElement } = parseTypeDef(schemaRoots, nodeIds, node.attrs.type, `attr '${node.value}'`);
 
   let required = false;
   if ("required" in node.attrs) {
@@ -190,7 +186,12 @@ function parseAttrDef(schemaRoots: IndentNode[], node: IndentNode): AttrSchema {
   return { name: node.value, type, required, ...(refElement ? { refElement } : {}) };
 }
 
-function parseValueDef(schemaRoots: IndentNode[], node: IndentNode, elementName: string): ValueSchema {
+function parseValueDef(
+  schemaRoots: IndentNode[],
+  nodeIds: Map<IndentNode, string>,
+  node: IndentNode,
+  elementName: string,
+): ValueSchema {
   if (node.value !== undefined) {
     throw new SchemaDefinitionError(
       `'value' takes no positional name, e.g. 'value type="string"' -- got a positional value on element '${elementName}'`,
@@ -199,6 +200,7 @@ function parseValueDef(schemaRoots: IndentNode[], node: IndentNode, elementName:
 
   const { type, refElement } = parseTypeDef(
     schemaRoots,
+    nodeIds,
     node.attrs.type,
     `'value' on element '${elementName}'`,
   );
@@ -241,8 +243,8 @@ function parseValueDef(schemaRoots: IndentNode[], node: IndentNode, elementName:
  * - `element` children, declaring allowed child elements, either as:
  *   - An **inline definition**: a nested `element "name"` line with a plain
  *     quoted string value. This both declares a brand-new element
- *     (registered globally, exactly as if it had been written at the top
- *     level) *and* wires it up as an allowed child of the enclosing
+ *     (scoped under its parent: `service` inside `org` is `org/service`,
+ *     distinct from any `service` declared elsewhere) *and* wires it up as an allowed child of the enclosing
  *     element, at the cardinality declared on this line. Inline
  *     definitions may themselves nest further inline definitions, to any
  *     depth.
@@ -255,30 +257,45 @@ function parseValueDef(schemaRoots: IndentNode[], node: IndentNode, elementName:
  *     exist yet) and for sharing one element under multiple parents with
  *     different cardinality.
  *
- * Every element name must be defined exactly once, whether at the top
- * level or inline under some parent; every other mention of that name must
- * use the ref form.
+ * Element declarations are scoped: the same name may be declared under
+ * different parents (each is a distinct element with its own attrs and
+ * children), but a name may be declared only once per parent, and top-level
+ * names are unique. A ref's xpath is authoritative -- every declaration it
+ * matches is used -- so qualify the path (e.g.
+ * `//element[.="org"]/element[.="service"]`) to narrow it. A ref that
+ * makes one parent hold two children of the same name is an error.
  */
 export function parseSchema(source: string): Schema {
   const { roots: schemaRoots } = parse(source);
 
   const elements = new Map<string, ElementSchema>();
   const defNodes = new Map<string, IndentNode>();
+  /** Definition node -> scoped id, for resolving xpath matches. */
+  const nodeIds = new Map<IndentNode, string>();
   const topLevelNames: string[] = [];
 
-  function registerDef(node: IndentNode, name: string): void {
-    if (elements.has(name)) {
-      throw new SchemaDefinitionError(`duplicate element definition '${name}'`);
+  function registerDef(node: IndentNode, name: string, parentId: string | undefined): void {
+    if (name.includes("/")) {
+      throw new SchemaDefinitionError(`element name '${name}' must not contain '/'`);
     }
-    elements.set(name, { name, attrs: new Map(), children: new Map() });
-    defNodes.set(name, node);
+    const id = parentId === undefined ? name : `${parentId}/${name}`;
+    if (elements.has(id)) {
+      throw new SchemaDefinitionError(
+        parentId === undefined
+          ? `duplicate element definition '${name}'`
+          : `duplicate child element '${name}' on element '${parentId}'`,
+      );
+    }
+    elements.set(id, { name, id, attrs: new Map(), children: new Map() });
+    defNodes.set(id, node);
+    nodeIds.set(node, id);
 
     // Recurse into this definition's children to discover further inline
     // nested definitions (refs are left alone -- they don't define anything
     // new, they're resolved in the fill pass below).
     for (const child of node.children) {
       if (child.kind === "element" && typeof child.value === "string") {
-        registerDef(child, child.value);
+        registerDef(child, child.value, id);
       }
     }
   }
@@ -297,21 +314,21 @@ export function parseSchema(source: string): Schema {
         `top-level 'element' definition requires a quoted string name, e.g. 'element "name"'`,
       );
     }
-    registerDef(node, node.value);
+    registerDef(node, node.value, undefined);
     topLevelNames.push(node.value);
   }
 
   // Pass 2: fill in attrs/value/children for every definition, now that
-  // every element name (top-level or nested) is known.
-  for (const [name, defNode] of defNodes) {
-    const elementSchema = elements.get(name)!;
+  // every element (top-level or nested) is known.
+  for (const [id, defNode] of defNodes) {
+    const elementSchema = elements.get(id)!;
 
     for (const child of defNode.children) {
       if (child.kind === "attr") {
-        const attrSchema = parseAttrDef(schemaRoots, child);
+        const attrSchema = parseAttrDef(schemaRoots, nodeIds, child);
         if (elementSchema.attrs.has(attrSchema.name)) {
           throw new SchemaDefinitionError(
-            `duplicate attr '${attrSchema.name}' on element '${name}'`,
+            `duplicate attr '${attrSchema.name}' on element '${id}'`,
           );
         }
         elementSchema.attrs.set(attrSchema.name, attrSchema);
@@ -320,36 +337,45 @@ export function parseSchema(source: string): Schema {
 
       if (child.kind === "value") {
         if (elementSchema.value) {
-          throw new SchemaDefinitionError(`duplicate 'value' declaration on element '${name}'`);
+          throw new SchemaDefinitionError(`duplicate 'value' declaration on element '${id}'`);
         }
-        elementSchema.value = parseValueDef(schemaRoots, child, name);
+        elementSchema.value = parseValueDef(schemaRoots, nodeIds, child, id);
         continue;
       }
 
       if (child.kind === "element") {
-        let resolvedName: string;
+        let resolvedIds: string[];
 
         if (typeof child.value === "string") {
           // Inline definition -- already registered in pass 1 under its own
-          // name; just wire it up as a child here.
-          resolvedName = child.value;
+          // scoped id; just wire it up as a child here.
+          resolvedIds = [nodeIds.get(child)!];
         } else if (isRefValue(child.value)) {
-          [resolvedName] = resolveElementRef(schemaRoots, child.value.raw, "child element reference");
+          resolvedIds = resolveElementRef(schemaRoots, nodeIds, child.value.raw, "child element reference");
         } else {
           throw new SchemaDefinitionError(
-            `a nested 'element' line must either inline-define a new element (e.g. 'element "name"') or reference a declared element via an xpath self-axis ref (e.g. 'element //element[.="name"]'), got a plain value instead`,
-          );
-        }
-
-        if (elementSchema.children.has(resolvedName)) {
-          throw new SchemaDefinitionError(
-            `duplicate child element reference to '${resolvedName}' on element '${name}'`,
+            `a nested 'element' line must either inline-define a new element (e.g. 'element "name"') or reference a declared element via an xpath ref (e.g. 'element //element[.="name"]'), got a plain value instead`,
           );
         }
 
         const { minCount, maxCount } = parseCardinality(child);
-        const childRef: ChildRef = { element: resolvedName, minCount, maxCount };
-        elementSchema.children.set(resolvedName, childRef);
+
+        // The xpath is authoritative: every matched declaration becomes a
+        // child at this cardinality. Children are keyed by local name, so
+        // two matches (or a match and an existing sibling) sharing a local
+        // name collide -- the one-child-per-name-per-parent rule.
+        for (const resolvedId of resolvedIds) {
+          const localName = elements.get(resolvedId)!.name;
+          const existing = elementSchema.children.get(localName);
+          if (existing) {
+            throw new SchemaDefinitionError(
+              existing.element === resolvedId
+                ? `duplicate child element reference to '${resolvedId}' on element '${id}'`
+                : `child elements '${existing.element}' and '${resolvedId}' share the name '${localName}' on element '${id}' -- an element may have only one child per name`,
+            );
+          }
+          elementSchema.children.set(localName, { element: resolvedId, minCount, maxCount });
+        }
         continue;
       }
 

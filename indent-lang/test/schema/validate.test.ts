@@ -256,7 +256,7 @@ org
 `);
       const diagnostics = validateAgainstSchema(doc.roots, refSchema);
       expect(
-        diagnostics.some((d) => /must resolve to an element of kind 'team'/.test(d.message)),
+        diagnostics.some((d) => /must resolve to an element of kind 'org\/team'/.test(d.message)),
       ).toBe(true);
     });
 
@@ -286,8 +286,99 @@ org
 `);
       const diagnostics = validateAgainstSchema(doc.roots, refSchema);
       expect(
-        diagnostics.some((d) => /must resolve to an element of kind 'team'/.test(d.message)),
+        diagnostics.some((d) => /must resolve to an element of kind 'org\/team'/.test(d.message)),
       ).toBe(true);
+    });
+  });
+
+  describe("scoped element declarations", () => {
+    // `group` is a layout element usable anywhere; `service` means something
+    // different under `org` than under `group`.
+    const scopedSchema = parseSchema(`
+element "org"
+    attr "name" type="string" required=true
+    element "service" minCount=1
+        attr "name" type="string" required=true
+    element "group"
+        attr "label" type="string"
+        element "service"
+            attr "tier" type="string" required=true
+        element //element[.="org"]/element[.="group"]
+`);
+
+    it("validates the same element name against its own scoped declaration at each level", () => {
+      const doc = parse(`
+org name="acme"
+    service name="api"
+    group label="backend"
+        service tier="gold"
+        group label="nested"
+            service tier="silver"
+`);
+      expect(validateAgainstSchema(doc.roots, scopedSchema)).toEqual([]);
+    });
+
+    it("flags attrs from the wrong scope", () => {
+      const doc = parse(`
+org name="acme"
+    service name="api"
+    group label="backend"
+        service name="oops"
+`);
+      const messages = validateAgainstSchema(doc.roots, scopedSchema).map((d) => d.message);
+      expect(messages.some((m) => /unknown attribute 'name' on element 'org\/group\/service'/.test(m))).toBe(true);
+      expect(messages.some((m) => /missing required attribute 'tier' on element 'org\/group\/service'/.test(m))).toBe(true);
+    });
+
+    it("counts cardinality per parent, not across wrappers", () => {
+      const doc = parse(`
+org name="acme"
+    group label="backend"
+        service tier="gold"
+`);
+      const messages = validateAgainstSchema(doc.roots, scopedSchema).map((d) => d.message);
+      expect(messages.some((m) => /'service' must appear at least 1 time under element 'org'/.test(m))).toBe(true);
+    });
+
+    it("checks ref targets by scoped id, not bare kind", () => {
+      const refSchema = parseSchema(`
+element "org"
+    element "team"
+    element "other"
+        element "team"
+    element "link"
+        attr "to" type=//element[.="org"]/element[.="team"]
+`);
+      const good = parse(`
+org
+    team
+    link to=/org/team
+`);
+      expect(validateAgainstSchema(good.roots, refSchema)).toEqual([]);
+
+      const bad = parse(`
+org
+    other
+        team
+    link to=/org/other/team
+`);
+      const messages = validateAgainstSchema(bad.roots, refSchema).map((d) => d.message);
+      expect(messages.some((m) => /must resolve to an element of kind 'org\/team', resolved to 'org\/other\/team'/.test(m))).toBe(true);
+    });
+
+    it("resolves forward refs to nodes validated later in the walk", () => {
+      const refSchema = parseSchema(`
+element "org"
+    element "link"
+        attr "to" type=//element[.="team"]
+    element "team"
+`);
+      const doc = parse(`
+org
+    link to=/org/team
+    team
+`);
+      expect(validateAgainstSchema(doc.roots, refSchema)).toEqual([]);
     });
   });
 });

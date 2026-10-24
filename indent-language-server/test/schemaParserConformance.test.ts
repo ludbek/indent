@@ -23,6 +23,8 @@ const normalize = (schema: Schema) => ({
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([name, el]) => ({
       name,
+      id: el.id,
+      localName: el.name,
       attrs: [...el.attrs.entries()].sort(([a], [b]) => a.localeCompare(b)),
       children: [...el.children.entries()]
         .sort(([a], [b]) => a.localeCompare(b))
@@ -43,6 +45,43 @@ const normalize = (schema: Schema) => ({
 });
 
 const VALID_FIXTURES: Record<string, string> = {
+  scopedSameName: `
+element "org"
+    element "service" minCount=1
+        attr "name" type="string" required=true
+    element "group"
+        element "service"
+            attr "tier" type="string"
+        element //element[.="org"]/element[.="group"]
+`,
+  recursiveSelfName: `
+element "group"
+    element "group"
+        attr "label" type="string"
+`,
+  qualifiedRefNarrows: `
+element "a"
+    element "team"
+        attr "x" type="string"
+
+element "b"
+    element "team"
+        attr "y" type="string"
+
+element "holder"
+    element //element[.="b"]/element[.="team"]
+    attr "t" type=//element[.="a"]/element[.="team"]
+`,
+  broadTypeRefMatchesMany: `
+element "a"
+    element "team"
+
+element "b"
+    element "team"
+
+element "holder"
+    attr "t" type=//element[.="team"]
+`,
   basic: `
 element "workspace"
     attr "name" type="string" required=true
@@ -86,8 +125,24 @@ element "person"
   duplicateInlineDef: `
 element "org"
     element "team"
-    element "other"
-        element "team"
+    element "team"
+`,
+  refCollidesOnLocalName: `
+element "a"
+    element "team"
+
+element "b"
+    element "team"
+
+element "holder"
+    element //element[.="team"]
+`,
+  refAndInlineShareName: `
+element "team"
+
+element "org"
+    element "team"
+    element //element[.="team"]
 `,
   unresolvedRef: `
 element "workspace"

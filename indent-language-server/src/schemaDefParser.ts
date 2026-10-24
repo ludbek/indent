@@ -46,45 +46,60 @@ function isRefValue(stmt: AstStatement | undefined): boolean {
   return stmt?.value?.valueType === "ref";
 }
 
-/** Adapts an `AstStatement` tree to `indent-lang`'s xpath module's generic `XPathNode` shape. */
-function toXPathNode(stmt: AstStatement): XPathNode {
+/**
+ * The schema's own tree in `indent-lang`'s xpath module's generic
+ * `XPathNode` shape, plus a map from each converted *definition* node to
+ * its scoped element id. Built once, after pass 1 has assigned ids.
+ */
+interface RefContext {
+  forest: XPathNode[];
+  ids: Map<XPathNode, string>;
+}
+
+/**
+ * Adapts an `AstStatement` tree to the xpath module's `XPathNode` shape,
+ * recording each definition statement's scoped id (from `stmtIds`) against
+ * its converted node in `ids`.
+ */
+function toXPathNode(
+  stmt: AstStatement,
+  stmtIds: Map<AstStatement, string>,
+  ids: Map<XPathNode, string>,
+): XPathNode {
   const attrs: Record<string, unknown> = {};
   for (const [name, attr] of Object.entries(stmt.attrs)) {
     attrs[name] = attr.value;
   }
-  return {
+  const node: XPathNode = {
     kind: stmt.kind,
     value: stmt.value?.value,
     attrs,
-    children: stmt.children.map(toXPathNode),
+    children: stmt.children.map((c) => toXPathNode(c, stmtIds, ids)),
   };
+  const id = stmtIds.get(stmt);
+  if (id !== undefined) ids.set(node, id);
+  return node;
 }
 
 /**
- * Resolves an xpath self-axis ref (e.g. `//element[.="team"]`) against the
- * schema's own root statements to the declared element name(s) it points
- * at, as a node-set-style array -- matching standard xpath semantics,
- * where a query always yields a collection regardless of cardinality (0,
- * 1, or many). Shared by child-element references and `attr`/`value`
- * `type=` ref-constraints.
+ * Resolves an xpath ref (e.g. `//element[.="team"]`) against the schema's
+ * own tree to the scoped id(s) of the declared element(s) it matches, as a
+ * node-set-style array -- matching standard xpath semantics, where a query
+ * always yields a collection regardless of cardinality (0, 1, or many).
+ * Shared by child-element references and `attr`/`value` `type=`
+ * ref-constraints.
  *
- * Matching more than one declared element is only permitted when the raw
- * xpath contains a wildcard (`*`) step *and* the caller opts in via
- * `allowMultiple` (set for `type=` ref-constraints; not set for
- * child-element references, which only ever name a single element to
- * nest). Otherwise >1 match is treated as a likely authoring mistake and
- * rejected as ambiguous.
+ * The xpath is authoritative: every declaration it matches is returned, and
+ * it's up to the schema designer to qualify the path (e.g.
+ * `//element[.="org"]/element[.="service"]`) when a narrower match is
+ * wanted. Only a ref matching nothing is an error.
  */
 function resolveElementRef(
-  schemaRoots: AstStatement[],
+  ctx: RefContext,
   raw: string,
   range: Range,
   describeWhat: string,
-  options?: { allowMultiple?: boolean },
 ): string[] {
-  const allowMultiple = options?.allowMultiple ?? false;
-  const forest = schemaRoots.map(toXPathNode);
-
   let parsed;
   try {
     parsed = parseXPath(raw);
@@ -100,26 +115,19 @@ function resolveElementRef(
       range,
     );
   }
-  const isWildcard = parsed.steps.some((step) => step.name === "*");
 
-  const matches = selectNodes(forest, parsed);
-  const defMatches = matches.filter((m) => m.kind === "element" && typeof m.value === "string");
-  const names = [...new Set(defMatches.map((m) => m.value as string))];
+  const matches = selectNodes(ctx.forest, parsed);
+  const ids = [
+    ...new Set(matches.map((m) => ctx.ids.get(m)).filter((id): id is string => id !== undefined)),
+  ];
 
-  if (names.length === 0) {
+  if (ids.length === 0) {
     throw new SchemaCstDefinitionError(
       `could not resolve ${describeWhat} '${raw}' to a declared element`,
       range,
     );
   }
-  if (names.length > 1 && !(allowMultiple && isWildcard)) {
-    throw new SchemaCstDefinitionError(
-      `${describeWhat} '${raw}' is ambiguous -- it matches ${names.length} declared elements`,
-      range,
-    );
-  }
-
-  return names;
+  return ids;
 }
 
 /**
@@ -181,7 +189,7 @@ function parseCardinality(stmt: AstStatement): { minCount: number; maxCount: num
  * of one of the declared element(s) the ref matches here.
  */
 function parseTypeDef(
-  schemaRoots: AstStatement[],
+  ctx: RefContext,
   stmt: AstStatement,
   describeWhat: string,
 ): { type: AttrType; refElement?: string[] } {
@@ -191,11 +199,10 @@ function parseTypeDef(
   }
   if (typeAttr && typeAttr.valueType === "ref") {
     const refElement = resolveElementRef(
-      schemaRoots,
+      ctx,
       typeAttr.valueRaw,
       typeAttr.valueRange,
       `${describeWhat} type ref`,
-      { allowMultiple: true },
     );
     return { type: "ref", refElement };
   }
@@ -205,7 +212,7 @@ function parseTypeDef(
   );
 }
 
-function parseAttrDef(schemaRoots: AstStatement[], stmt: AstStatement): AttrSchema {
+function parseAttrDef(ctx: RefContext, stmt: AstStatement): AttrSchema {
   if (!stmt.value || stmt.value.valueType !== "string") {
     throw new SchemaCstDefinitionError(
       `'attr' requires a quoted string name, e.g. 'attr "name" type="string"'`,
@@ -214,7 +221,7 @@ function parseAttrDef(schemaRoots: AstStatement[], stmt: AstStatement): AttrSche
   }
   const name = stmt.value.value as string;
 
-  const { type, refElement } = parseTypeDef(schemaRoots, stmt, `attr '${name}'`);
+  const { type, refElement } = parseTypeDef(ctx, stmt, `attr '${name}'`);
 
   let required = false;
   const requiredAttr = stmt.attrs.required;
@@ -241,7 +248,7 @@ function parseAttrDef(schemaRoots: AstStatement[], stmt: AstStatement): AttrSche
   return { name, type, required, ...(refElement ? { refElement } : {}) };
 }
 
-function parseValueDef(schemaRoots: AstStatement[], stmt: AstStatement, elementName: string): ValueSchema {
+function parseValueDef(ctx: RefContext, stmt: AstStatement, elementName: string): ValueSchema {
   if (stmt.value !== undefined) {
     throw new SchemaCstDefinitionError(
       `'value' takes no positional name, e.g. 'value type="string"' -- got a positional value on element '${elementName}'`,
@@ -249,7 +256,7 @@ function parseValueDef(schemaRoots: AstStatement[], stmt: AstStatement, elementN
     );
   }
 
-  const { type, refElement } = parseTypeDef(schemaRoots, stmt, `'value' on element '${elementName}'`);
+  const { type, refElement } = parseTypeDef(ctx, stmt, `'value' on element '${elementName}'`);
 
   let required = false;
   const requiredAttr = stmt.attrs.required;
@@ -286,18 +293,33 @@ function parseValueDef(schemaRoots: AstStatement[], stmt: AstStatement, elementN
 export function parseSchemaFromCst(schemaRoots: AstStatement[]): Schema {
   const elements = new Map<string, ElementSchema>();
   const defStmts = new Map<string, AstStatement>();
+  /** Definition statement -> scoped id, for resolving xpath matches. */
+  const stmtIds = new Map<AstStatement, string>();
   const topLevelNames: string[] = [];
 
-  function registerDef(stmt: AstStatement, name: string): void {
-    if (elements.has(name)) {
-      throw new SchemaCstDefinitionError(`duplicate element definition '${name}'`, stmt.kindRange);
+  function registerDef(stmt: AstStatement, name: string, parentId: string | undefined): void {
+    if (name.includes("/")) {
+      throw new SchemaCstDefinitionError(
+        `element name '${name}' must not contain '/'`,
+        stmt.value?.range ?? stmt.kindRange,
+      );
     }
-    elements.set(name, { name, attrs: new Map(), children: new Map() });
-    defStmts.set(name, stmt);
+    const id = parentId === undefined ? name : `${parentId}/${name}`;
+    if (elements.has(id)) {
+      throw new SchemaCstDefinitionError(
+        parentId === undefined
+          ? `duplicate element definition '${name}'`
+          : `duplicate child element '${name}' on element '${parentId}'`,
+        stmt.kindRange,
+      );
+    }
+    elements.set(id, { name, id, attrs: new Map(), children: new Map() });
+    defStmts.set(id, stmt);
+    stmtIds.set(stmt, id);
 
     for (const child of stmt.children) {
       if (child.kind === "element" && child.value?.valueType === "string") {
-        registerDef(child, child.value.value as string);
+        registerDef(child, child.value.value as string, id);
       }
     }
   }
@@ -315,19 +337,25 @@ export function parseSchemaFromCst(schemaRoots: AstStatement[]): Schema {
         stmt.kindRange,
       );
     }
-    registerDef(stmt, stmt.value.value as string);
+    registerDef(stmt, stmt.value.value as string, undefined);
     topLevelNames.push(stmt.value.value as string);
   }
 
-  for (const [name, defStmt] of defStmts) {
-    const elementSchema = elements.get(name)!;
+  const xpathIds = new Map<XPathNode, string>();
+  const ctx: RefContext = {
+    forest: schemaRoots.map((r) => toXPathNode(r, stmtIds, xpathIds)),
+    ids: xpathIds,
+  };
+
+  for (const [id, defStmt] of defStmts) {
+    const elementSchema = elements.get(id)!;
 
     for (const child of defStmt.children) {
       if (child.kind === "attr") {
-        const attrSchema = parseAttrDef(schemaRoots, child);
+        const attrSchema = parseAttrDef(ctx, child);
         if (elementSchema.attrs.has(attrSchema.name)) {
           throw new SchemaCstDefinitionError(
-            `duplicate attr '${attrSchema.name}' on element '${name}'`,
+            `duplicate attr '${attrSchema.name}' on element '${id}'`,
             child.value!.range,
           );
         }
@@ -338,43 +366,48 @@ export function parseSchemaFromCst(schemaRoots: AstStatement[]): Schema {
       if (child.kind === "value") {
         if (elementSchema.value) {
           throw new SchemaCstDefinitionError(
-            `duplicate 'value' declaration on element '${name}'`,
+            `duplicate 'value' declaration on element '${id}'`,
             child.kindRange,
           );
         }
-        elementSchema.value = parseValueDef(schemaRoots, child, name);
+        elementSchema.value = parseValueDef(ctx, child, id);
         continue;
       }
 
       if (child.kind === "element") {
-        let resolvedName: string;
+        let resolvedIds: string[];
 
         if (child.value?.valueType === "string") {
-          resolvedName = child.value.value as string;
+          resolvedIds = [stmtIds.get(child)!];
         } else if (isRefValue(child)) {
-          [resolvedName] = resolveElementRef(
-            schemaRoots,
+          resolvedIds = resolveElementRef(
+            ctx,
             child.value!.valueRaw,
             child.value!.range,
             "child element reference",
           );
         } else {
           throw new SchemaCstDefinitionError(
-            `a nested 'element' line must either inline-define a new element (e.g. 'element "name"') or reference a declared element via an xpath self-axis ref (e.g. 'element //element[.="name"]'), got a plain value instead`,
+            `a nested 'element' line must either inline-define a new element (e.g. 'element "name"') or reference a declared element via an xpath ref (e.g. 'element //element[.="name"]'), got a plain value instead`,
             child.value?.range ?? child.kindRange,
           );
         }
 
-        if (elementSchema.children.has(resolvedName)) {
-          throw new SchemaCstDefinitionError(
-            `duplicate child element reference to '${resolvedName}' on element '${name}'`,
-            child.kindRange,
-          );
-        }
-
         const { minCount, maxCount } = parseCardinality(child);
-        const childRef: ChildRef = { element: resolvedName, minCount, maxCount };
-        elementSchema.children.set(resolvedName, childRef);
+
+        for (const resolvedId of resolvedIds) {
+          const localName = elements.get(resolvedId)!.name;
+          const existing = elementSchema.children.get(localName);
+          if (existing) {
+            throw new SchemaCstDefinitionError(
+              existing.element === resolvedId
+                ? `duplicate child element reference to '${resolvedId}' on element '${id}'`
+                : `child elements '${existing.element}' and '${resolvedId}' share the name '${localName}' on element '${id}' -- an element may have only one child per name`,
+              child.kindRange,
+            );
+          }
+          elementSchema.children.set(localName, { element: resolvedId, minCount, maxCount });
+        }
         continue;
       }
 

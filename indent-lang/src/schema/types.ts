@@ -12,8 +12,8 @@ export interface AttrSchema {
   /**
    * When `type` is `"ref"` and the attr's `type=` was declared as an xpath
    * self-axis ref (e.g. `attr "name" type=//element[.="team"]`) rather than
-   * the plain `type="ref"` literal, this holds the declared element
-   * name(s) the ref's target must match -- mirroring xpath's own node-set
+   * the plain `type="ref"` literal, this holds the scoped id(s) of the declared
+   * element(s) the ref's target must match -- mirroring xpath's own node-set
    * semantics, where a query always yields a collection regardless of
    * cardinality. Validation then checks not just that the attribute's
    * value is *a* ref, but that it resolves (in the document being
@@ -52,7 +52,7 @@ export interface ValueSchema {
  * declare it (`//element[.="container"]`).
  */
 export interface ChildRef {
-  /** The canonical element name this reference resolves to. */
+  /** The scoped id (see `ElementSchema.id`) of the declaration this reference resolves to. */
   element: string;
   /** Minimum number of occurrences required among siblings of this element. Default `0`. */
   minCount: number;
@@ -62,11 +62,23 @@ export interface ChildRef {
 
 /** A canonical element definition: its allowed attrs and child elements. */
 export interface ElementSchema {
-  /** The element name, e.g. `"container"`. */
+  /** The local element name, e.g. `"container"`. */
   name: string;
+  /**
+   * The element's scoped identity: its local name for a top-level
+   * definition, otherwise the `/`-joined path of local names from the
+   * top-level ancestor (e.g. `"org/group/service"`). `/` cannot occur in an
+   * element name, so ids are unambiguous. The same local name may be
+   * declared under different parents; each declaration has its own id.
+   */
+  id: string;
   /** Allowed attributes, keyed by name. */
   attrs: Map<string, AttrSchema>;
-  /** Allowed child elements and their cardinality, keyed by child element name. */
+  /**
+   * Allowed child elements and their cardinality, keyed by *local* child
+   * name. Keying by local name is what enforces that a parent holds at most
+   * one child declaration per name.
+   */
   children: Map<string, ChildRef>;
   /** Declared schema for this element's own positional value, if any. */
   value?: ValueSchema;
@@ -74,7 +86,7 @@ export interface ElementSchema {
 
 /** A fully-parsed schema document. */
 export interface Schema {
-  /** Every declared element definition, keyed by element name. */
+  /** Every declared element definition, keyed by scoped id (see `ElementSchema.id`). */
   elements: Map<string, ElementSchema>;
   /** Allowed elements (and cardinality) at the document root. */
   roots: Map<string, ChildRef>;

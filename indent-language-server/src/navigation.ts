@@ -11,6 +11,7 @@ import {
 import type { WorkspaceIndex } from "./indexer.js";
 import type { AstStatement, IndexedNode } from "./types.js";
 import type { Schema } from "indent-lang/schema";
+import { schemaIdForStatement } from "./schemaScope.js";
 
 function getSchemaForDocument(index: WorkspaceIndex, uri: string): Schema | undefined {
   const binding = index.schemaBindingByUri.get(uri);
@@ -155,7 +156,8 @@ export function getHover(
   const stmt = index.getStatementAtPosition(uri, position);
   if (stmt) {
     const schema = getSchemaForDocument(index, uri);
-    const elementSchema = schema?.elements.get(stmt.kind);
+    const stmtId = schema ? schemaIdForStatement(schema, stmt) : undefined;
+    const elementSchema = stmtId !== undefined ? schema?.elements.get(stmtId) : undefined;
     const node = index.nodesById.get(stmt.id);
     if (node) {
       const lines = [
@@ -190,7 +192,7 @@ export function getHover(
         if (childKinds.length > 0) {
           lines.push(`**Allowed children (schema):** ${childKinds.map((k) => `\`${k}\``).join(", ")}`);
         }
-      } else if (schema && !schema.elements.has(stmt.kind) && !schema.roots.has(stmt.kind)) {
+      } else if (schema && stmtId === undefined) {
         lines.push(`_Element \`${stmt.kind}\` is not declared in the bound schema._`);
       }
 
