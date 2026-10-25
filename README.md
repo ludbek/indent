@@ -187,3 +187,7 @@ npm install
 npm run build   # build --workspaces --if-present
 npm run test    # test --workspaces --if-present
 ```
+
+## Versioning
+
+The project is in alpha. Until 1.0.0, breaking changes (`feat!`) bump the minor version, not the major (`bump-minor-pre-major` in `release-please-config.json`).
