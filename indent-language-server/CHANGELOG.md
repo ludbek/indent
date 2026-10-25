@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.3.0](https://github.com/ludbek/indent/compare/indent-language-server-v0.2.2...indent-language-server-v0.3.0) (2026-10-25)
+
+
+### ⚠ BREAKING CHANGES
+
+* schemas that reference a top-level element as a child must mark it reusable=true, which also removes it from the document roots.
+
+### Features
+
+* add reusable elements to schemas ([0c9aef9](https://github.com/ludbek/indent/commit/0c9aef90be9ccc18ad8d81cf6ed3f42918bbb230))
+* scope schema element declarations per parent ([8808575](https://github.com/ludbek/indent/commit/88085750e2b9c10524709a86f9cbe29618c8b732))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * indent-lang bumped from ^0.3.0 to ^0.4.0
+
 ## [0.2.2](https://github.com/ludbek/indent/compare/indent-language-server-v0.2.1...indent-language-server-v0.2.2) (2026-10-14)
 
 
